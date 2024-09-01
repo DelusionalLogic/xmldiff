@@ -151,24 +151,24 @@ while to_compute:
     print(f_match, t_match)
 
     if t_match == Cmd.MATCH:
-        trace_so_far.append((item[0]-1, item[1]-1))
+        trace_so_far.append((i-1, j-1))
 
         if f_match == Cmd.MATCH:
             for tpl in f_arg:
                 print(tpl)
-                next = (a_adj[item[0]-1][tpl._left]+1, b_adj[item[1]-1][tpl._right]+1)
+                next = (a_adj[i-1][tpl._left]+1, b_adj[j-1][tpl._right]+1)
                 print(f"Scheduling {next}")
                 to_compute.append(next)
         elif f_match == Cmd.ADD:
             print(f_arg)
-            for c in b_adj[b_adj[item[1]-1][f_arg]]:
-                next = (item[0], b_adj[item[1]-1][f_arg]+1)
+            for c in b_adj[b_adj[j-1][f_arg]]:
+                next = (i, b_adj[j-1][f_arg]+1)
                 print(f"Scheduling {next}")
                 to_compute.append(next)
         elif f_match == Cmd.REMOVE:
             print(f_arg)
-            for c in a_adj[a_adj[item[0]-1][f_arg]]:
-                next = (a_adj[item[0]-1][f_arg]+1, item[1])
+            for c in a_adj[a_adj[i-1][f_arg]]:
+                next = (a_adj[i-1][f_arg]+1, j)
                 print(f"Scheduling {next}")
                 to_compute.append(next)
 
