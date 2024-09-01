@@ -136,3 +136,4 @@ while to_compute:
                 next = (a_adj[i-1][f_arg]+1, j)
                 to_compute.append(next)
 
+print(trace_so_far)
