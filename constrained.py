@@ -4,6 +4,9 @@ from enum import (
 )
 
 import numpy as np
+from edist import (
+    sed,
+)
 
 a = [0, 1, 2, 3]
 a_adj = [[1, 3], [2], [], []]
@@ -13,7 +16,7 @@ b_adj = [[1, 2], [], [3, 4], [], []]
 
 cost_n = np.empty((len(a)+1, len(b)+1), dtype=int)
 cost_f = np.empty((len(a)+1, len(b)+1), dtype=int)
-trace = [[(None, None, None) for _ in range(len(b)+1)] for _ in range(len(a)+1)]
+trace = [[None for _ in range(len(b)+1)] for _ in range(len(a)+1)]
 # cost_n = [[None] * (len(b)+1) for _ in range(len(a)+1)]
 
 def cost(ai, bi):
@@ -47,42 +50,27 @@ class Cmd(Enum):
 
 # Verified so far
 
+def seq_dist(ai, bi):
+    if ai is None:
+        return cost_n[0][bi]
+    if bi is None:
+        return cost_n[ai][0]
+
+    return cost_n[ai+1][bi+1]
+
+
 cost_e = np.empty((len(a)+1, len(b)+1), dtype=int)
 for i in reversed(range(len(a))):
     for j in reversed(range(len(b))):
-        cost_e[0][0] = 0
-        for s in range(len(a_adj[i])):
-            cost_e[s+1][0] = cost_e[s][0] + cost_n[a_adj[i][s]+1][0]
-        for t in range(len(b_adj[j])):
-            cost_e[0][t+1] = cost_e[0][t] + cost_n[0][b_adj[j][t]+1]
-            if (i == 0 and j == 0) or 1:
-                print(f"Writing {cost_e[0][t+1]} to cost_e 0, {t+1} From:")
-                print(cost_e[0][t] + cost_n[0][b_adj[j][t]+1])
-        for s in range(len(a_adj[i])):
-            for t in range(len(b_adj[j])):
-                cost_e[s+1][t+1] = min(
-                    cost_e[s+1][t] + cost_n[0][b_adj[j][t]+1],
-                    cost_e[s][t+1] + cost_n[a_adj[i][s]+1][0],
-                    cost_e[s][t] + cost_n[a_adj[i][s]+1][b_adj[j][t]+1],
-                )
-                if (i == 0 and j == 0) or 1:
-                    print(f"Writing {cost_e[s+1][t+1]} to cost_e {s+1}, {t+1} From:")
-                    print(cost_e[s+1][t] + cost_n[0][b_adj[j][t]+1])
-                    print(cost_e[s][t+1] + cost_n[a_adj[i][s]+1][0])
-                    print(cost_e[s][t] + cost_n[a_adj[i][s]+1][b_adj[j][t]+1])
-
-        if (i == 0 and j == 0) or 1:
-            print(a_adj[i], b_adj[j])
-            print(cost_e)
-            print(a[i], b[j], cost_e[len(a_adj[i])][len(b_adj[j])])
-
-        # print(a_adj[i], b_adj[j], min_to, min_from)
-
         choices = [
-            cost_e[len(a_adj[i])][len(b_adj[j])]
+            sed.sed(a_adj[i], b_adj[j], delta=seq_dist)
         ]
+        # @PERF @CLEANUP: Right now it doesn't make a lot of sense for us to
+        # compute the alignment here, but optimally we could use the matrix we
+        # just computed
+        alignment = sed.sed_backtrace(a_adj[i], b_adj[j], delta=seq_dist)
         f_traces = [
-            (Cmd.MATCH, None)
+            (Cmd.MATCH, alignment)
         ]
 
         fmin_s = None
@@ -95,7 +83,7 @@ for i in reversed(range(len(a))):
         if len(b_adj[j]) > 0:
             fmin_t = np.argmin((cost_f[i+1][b_adj[j][t]+1] - cost_f[0][b_adj[j][t]+1] for t in range(len(b_adj[j]))))
             choices.append(cost_f[0][j+1] + cost_f[i+1][b_adj[j][fmin_t]+1] - cost_f[0][b_adj[j][fmin_t]+1])
-            f_traces.append((Cmd.ADD, fmin_s))
+            f_traces.append((Cmd.ADD, fmin_t))
 
         f_min = np.argmin(choices)
         cost_f[i+1][j+1] = choices[f_min]
@@ -104,8 +92,6 @@ for i in reversed(range(len(a))):
         if (i == 0 and j == 0) or 1:
             print(f"Writing {cost_f[i+1][j+1]} to cost_f {i+1}, {j+1} From:")
             print(choices)
-
-            print(cost_f[i+1][0])
 
         choices = [
             cost_f[i+1][j+1] + cost(i, j)
@@ -139,16 +125,51 @@ print(cost_n[0][1])
 print(cost_n)
 # print(cost_n)
 
-def cost(a, b):
-    if a is None:
-        return 1
-    if b is None:
-        return 1
+# def cost(a, b):
+#     if a is None:
+#         return 1
+#     if b is None:
+#         return 1
 
-    if a == b:
-        return 0
+#     if a == b:
+#         return 0
 
-    return 1
+#     return 1
 
 
 print(trace)
+
+to_compute = [
+    (1, 1)
+]
+trace_so_far = []
+
+while len(to_compute) > 0:
+    item = to_compute.pop()
+    print(item)
+    ((f_match, f_arg), (t_match, t_arg)) = trace[item[0]][item[1]]
+    print(f_match, t_match)
+
+    if t_match == Cmd.MATCH:
+        trace_so_far.append((item[0]-1, item[1]-1))
+
+        if f_match == Cmd.MATCH:
+            for tpl in f_arg:
+                print(tpl)
+                next = (a_adj[item[0]-1][tpl._left]+1, b_adj[item[1]-1][tpl._right]+1)
+                print(f"Scheduling {next}")
+                to_compute.append(next)
+        elif f_match == Cmd.ADD:
+            print(f_arg)
+            for c in b_adj[b_adj[item[1]-1][f_arg]]:
+                next = (item[0], b_adj[item[1]-1][f_arg]+1)
+                print(f"Scheduling {next}")
+                to_compute.append(next)
+        elif f_match == Cmd.REMOVE:
+            print(f_arg)
+            for c in a_adj[a_adj[item[0]-1][f_arg]]:
+                next = (a_adj[item[0]-1][f_arg]+1, item[1])
+                print(f"Scheduling {next}")
+                to_compute.append(next)
+
+print(trace_so_far)
