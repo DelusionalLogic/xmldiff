@@ -144,10 +144,10 @@ to_compute = [
 ]
 trace_so_far = []
 
-while len(to_compute) > 0:
-    item = to_compute.pop()
-    print(item)
-    ((f_match, f_arg), (t_match, t_arg)) = trace[item[0]][item[1]]
+while to_compute:
+    i, j = to_compute.pop()
+    print((i, j))
+    ((f_match, f_arg), (t_match, t_arg)) = trace[i][j]
     print(f_match, t_match)
 
     if t_match == Cmd.MATCH:
