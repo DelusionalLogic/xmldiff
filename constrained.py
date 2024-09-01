@@ -17,7 +17,6 @@ b_adj = [[1, 2], [], [3, 4], [], []]
 cost_n = np.empty((len(a)+1, len(b)+1), dtype=int)
 cost_f = np.empty((len(a)+1, len(b)+1), dtype=int)
 trace = [[None for _ in range(len(b)+1)] for _ in range(len(a)+1)]
-# cost_n = [[None] * (len(b)+1) for _ in range(len(a)+1)]
 
 def cost(ai, bi):
     if ai is None:
@@ -65,9 +64,6 @@ for i in reversed(range(len(a))):
         choices = [
             sed.sed(a_adj[i], b_adj[j], delta=seq_dist)
         ]
-        # @PERF @CLEANUP: Right now it doesn't make a lot of sense for us to
-        # compute the alignment here, but optimally we could use the matrix we
-        # just computed
         alignment = sed.sed_backtrace(a_adj[i], b_adj[j], delta=seq_dist)
         f_traces = [
             (Cmd.MATCH, alignment)
@@ -89,9 +85,6 @@ for i in reversed(range(len(a))):
         cost_f[i+1][j+1] = choices[f_min]
         forest_trace = f_traces[f_min]
 
-        if (i == 0 and j == 0) or 1:
-            print(f"Writing {cost_f[i+1][j+1]} to cost_f {i+1}, {j+1} From:")
-            print(choices)
 
         choices = [
             cost_f[i+1][j+1] + cost(i, j)
@@ -116,28 +109,7 @@ for i in reversed(range(len(a))):
         cost_n[i+1][j+1] = choices[n_min]
         trace[i+1][j+1] = (forest_trace, n_traces[n_min])
 
-        if (i == 0 and j == 0) or 1:
-            print(f"Writing {cost_n[i+1][j+1]} to cost_n {i+1}, {j+1} From:")
-            print(choices)
 
-print(cost_n[0][1])
-
-print(cost_n)
-# print(cost_n)
-
-# def cost(a, b):
-#     if a is None:
-#         return 1
-#     if b is None:
-#         return 1
-
-#     if a == b:
-#         return 0
-
-#     return 1
-
-
-print(trace)
 
 to_compute = [
     (1, 1)
@@ -146,30 +118,21 @@ trace_so_far = []
 
 while to_compute:
     i, j = to_compute.pop()
-    print((i, j))
     ((f_match, f_arg), (t_match, t_arg)) = trace[i][j]
-    print(f_match, t_match)
 
     if t_match == Cmd.MATCH:
         trace_so_far.append((i-1, j-1))
 
         if f_match == Cmd.MATCH:
             for tpl in f_arg:
-                print(tpl)
                 next = (a_adj[i-1][tpl._left]+1, b_adj[j-1][tpl._right]+1)
-                print(f"Scheduling {next}")
                 to_compute.append(next)
         elif f_match == Cmd.ADD:
-            print(f_arg)
             for c in b_adj[b_adj[j-1][f_arg]]:
                 next = (i, b_adj[j-1][f_arg]+1)
-                print(f"Scheduling {next}")
                 to_compute.append(next)
         elif f_match == Cmd.REMOVE:
-            print(f_arg)
             for c in a_adj[a_adj[i-1][f_arg]]:
                 next = (a_adj[i-1][f_arg]+1, j)
-                print(f"Scheduling {next}")
                 to_compute.append(next)
 
-print(trace_so_far)
