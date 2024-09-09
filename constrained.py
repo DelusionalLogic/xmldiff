@@ -98,13 +98,13 @@ def constrained_edit_distance(a_adj, b_adj, cost, data=None):
             if len(a_adj[i]) > 0:
                 n_min_s = np.argmin((cost_n[a_adj[i][s]+1][j+1] - cost_n[a_adj[i][s]+1][0] for s in range(len(a_adj[i]))))
                 choices.append(cost_n[i+1][0] + cost_n[a_adj[i][n_min_s]+1][j+1] - cost_n[a_adj[i][n_min_s]+1][0])
-                n_traces.append((Cmd.REMOVE, fmin_s))
+                n_traces.append((Cmd.REMOVE, n_min_s))
 
             n_min_t = None
             if len(b_adj[j]) > 0:
                 n_min_t = np.argmin((cost_n[i+1][b_adj[j][t]+1] - cost_n[0][b_adj[j][t]+1] for t in range(len(b_adj[j]))))
                 choices.append(cost_n[0][j+1] + cost_n[i+1][b_adj[j][n_min_t]+1] - cost_n[0][b_adj[j][n_min_t]+1])
-                n_traces.append((Cmd.ADD, fmin_s))
+                n_traces.append((Cmd.ADD, n_min_t))
 
             n_min = np.argmin(choices)
             cost_n[i+1][j+1] = choices[n_min]
@@ -112,9 +112,10 @@ def constrained_edit_distance(a_adj, b_adj, cost, data=None):
 
     return (cost_n[1][1].item(), trace)
 
-# (cost, trace) = constrained_edit_distance(a_adj, b_adj, cost)
-
 def constrained_alignment(a_adj, b_adj, trace):
+    if len(a_adj) == 0 and len(b_adj) == 0:
+        return edist.alignment.Alignment()
+
     alignment = edist.alignment.Alignment()
     to_compute = [
         (1, 1)
@@ -134,13 +135,11 @@ def constrained_alignment(a_adj, b_adj, trace):
     while len(to_compute) > 0:
         i, j = to_compute.pop()
         (t_match, t_arg) = trace[i][j][1]
-        alignment.append_tuple(i-1, j-1)
 
         if t_match == Cmd.MATCH:
+            alignment.append_tuple(i-1, j-1)
             (f_match, f_arg) = trace[i][j][0]
 
-            # @COMPLETE: I haven't added the other conditions YET
-            assert(f_match == Cmd.MATCH)
             if f_match == Cmd.MATCH:
                 for e in reversed(f_arg):
                     if e._right >= 0 and e._left >= 0:
@@ -150,6 +149,9 @@ def constrained_alignment(a_adj, b_adj, trace):
                         to_compute.append((na+1, nb+1))
                         continue
 
+                    start = None
+                    tree = None
+                    op = None
                     # These we can handle inline
                     if e._right < 0:
                         start = a_adj[i-1][e._left]
@@ -160,14 +162,22 @@ def constrained_alignment(a_adj, b_adj, trace):
                         tree = b_adj
                         op = Cmd.ADD
                     do_subtree(alignment, start, tree, op)
+            else:
+                assert(False)
+        elif t_match == Cmd.ADD:
+            # Add means we inject a node right here, but continue mapping the
+            # current node from a into one of the children in b
+            alignment.append_tuple(-1, j-1)
+            for t,  t_node in enumerate(b_adj[j-1]):
+                if t == t_arg:
+                    to_compute.append((i, t_node+1))
+                else:
+                    do_subtree(alignment, t_node, b_adj, Cmd.ADD)
+        else:
+            assert(False)
+
     return alignment
 
-# alignment = constrained_alignment(a_adj, b_adj, trace)
-
-# print(alignment)
 # script = edist.tree_edits.alignment_to_script(alignment, a, a_adj, b, b_adj)
 # print(script)
 # print(script.apply(a, a_adj))
-
-# print('\n'.join([''.join(['{:100}'.format(str(item)) for item in row]) 
-#       for row in trace]))
