@@ -18,49 +18,49 @@ class TestConstrainedEditDistance(unittest.TestCase):
     def test_identical_trees(self):
         a_adj = [[1, 2], [], []]
         b_adj = [[1, 2], [], []]
-        a = [0, 1, 2]
-        b = [0, 1, 2]
-        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a, b))
+        a_values = [0, 1, 2]
+        b_values = [0, 1, 2]
+        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
         self.assertEqual(distance, 0)
 
     def test_different_trees(self):
         a_adj = [[1, 2], [], []]
         b_adj = [[1], [2], []]
-        a = list(range(len(a_adj)))
-        b = list(range(len(a_adj)))
-        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a, b))
+        a_values = [0, 1, 2]
+        b_values = [0, 1, 2]
+        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
         self.assertEqual(distance, 2)
 
     def test_add_node(self):
         a_adj = [[1], []]
         b_adj = [[1, 2], [], []]
-        a = [0, 1, 2]
-        b = [0, 1, 2]
-        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a, b))
+        a_values = [0, 1]
+        b_values = [0, 1, 2]
+        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
         self.assertEqual(distance, 1)
 
     def test_remove_node(self):
         a_adj = [[1, 2], [], []]
         b_adj = [[1], []]
-        a = [0, 1, 2]
-        b = [0, 1, 2]
-        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a, b))
+        a_values = [0, 1, 2]
+        b_values = [0, 1]
+        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
         self.assertEqual(distance, 1)
 
     def test_single_node_trees(self):
         a_adj = [[]]
         b_adj = [[]]
-        a = [0]
-        b = [0]
-        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a, b))
+        a_values = [0]
+        b_values = [0]
+        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
         self.assertEqual(distance, 0)
 
     def test_multi_level_trees(self):
         a_adj = [[1, 4], [2, 3], [], [], []]
         b_adj = [[1, 3], [2], [], [4], []]
-        a = [0, 1, 2, 3, 4]
-        b = [0, 1, 2, 3, 4]
-        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a, b))
+        a_values = [0, 1, 2, 3, 4]
+        b_values = [0, 1, 2, 3, 4]
+        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
         self.assertEqual(distance, 2)
 
     def test_different_node_values(self):
