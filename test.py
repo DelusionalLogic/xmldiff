@@ -81,7 +81,7 @@ class TestConstrainedAlignment(unittest.TestCase):
         _, trace = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
         alignment = constrained_alignment(a_adj, b_adj, trace)
         expected = [(0, 0), (1, 1), (2, 2)]
-        self.assertEqual(alignment.tuples(), expected)
+        self.assertEqual(alignment.pairs(), expected)
 
     def test_add_node(self):
         a_adj = [[1], []]

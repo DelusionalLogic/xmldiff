@@ -136,8 +136,6 @@ def constrained_alignment(a_adj, b_adj, trace):
         (t_match, t_arg) = trace[i][j][1]
         alignment.append_tuple(i-1, j-1)
 
-        # @COMPLETE: I haven't added the other conditions YET
-        assert(t_match == Cmd.MATCH)
         if t_match == Cmd.MATCH:
             (f_match, f_arg) = trace[i][j][0]
 
