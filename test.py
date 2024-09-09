@@ -25,7 +25,7 @@ class TestConstrainedEditDistance(unittest.TestCase):
         a_adj = [[1, 2], [], []]
         b_adj = [[1], [2], []]
         distance, _ = constrained_edit_distance(a_adj, b_adj, cost, [list(range(len(a_adj)))]*2)
-        self.assertGreater(distance, 0)
+        self.assertEqual(distance, 1)
 
     def test_add_node(self):
         a_adj = [[1], []]
@@ -49,7 +49,7 @@ class TestConstrainedEditDistance(unittest.TestCase):
         a_adj = [[1, 2], [3, 4], [], [], []]
         b_adj = [[1, 2], [3], [4], [], []]
         distance, _ = constrained_edit_distance(a_adj, b_adj, cost, [list(range(len(a_adj)))]*2)
-        self.assertGreater(distance, 0)
+        self.assertEqual(distance, 1)
 
     def test_different_node_values(self):
         a_adj = [[1, 2], [], []]
@@ -63,7 +63,7 @@ class TestConstrainedEditDistance(unittest.TestCase):
         a_adj = [[1, 2], [], []]
         b_adj = [[1], [2], []]
         distance, _ = constrained_edit_distance(a_adj, b_adj, cost, [list(range(len(a_adj))), list(range(len(b_adj)))])
-        self.assertGreater(distance, 0)
+        self.assertEqual(distance, 2)
 
 if __name__ == '__main__':
     unittest.main()
