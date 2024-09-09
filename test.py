@@ -4,6 +4,7 @@ import numpy as np
 
 from constrained import (
     constrained_edit_distance,
+    constrained_alignment,
     cost,
 )
 
@@ -70,6 +71,47 @@ class TestConstrainedEditDistance(unittest.TestCase):
         b_values = [0, 2, 1]
         distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
         self.assertEqual(distance, 2)
+
+class TestConstrainedAlignment(unittest.TestCase):
+    def test_identical_trees(self):
+        a_adj = [[1, 2], [], []]
+        b_adj = [[1, 2], [], []]
+        a_values = [0, 1, 2]
+        b_values = [0, 1, 2]
+        _, trace = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
+        alignment = constrained_alignment(a_adj, b_adj, trace)
+        expected = [(0, 0), (1, 1), (2, 2)]
+        self.assertEqual(alignment.tuples(), expected)
+
+    def test_add_node(self):
+        a_adj = [[1], []]
+        b_adj = [[1, 2], [], []]
+        a_values = [0, 1]
+        b_values = [0, 1, 2]
+        _, trace = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
+        alignment = constrained_alignment(a_adj, b_adj, trace)
+        expected = [(0, 0), (1, 1), (-1, 2)]
+        self.assertEqual(alignment.tuples(), expected)
+
+    def test_remove_node(self):
+        a_adj = [[1, 2], [], []]
+        b_adj = [[1], []]
+        a_values = [0, 1, 2]
+        b_values = [0, 1]
+        _, trace = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
+        alignment = constrained_alignment(a_adj, b_adj, trace)
+        expected = [(0, 0), (1, 1), (2, -1)]
+        self.assertEqual(alignment.tuples(), expected)
+
+    def test_multi_level_trees(self):
+        a_adj = [[1, 4], [2, 3], [], [], []]
+        b_adj = [[1, 3], [2], [], [4], []]
+        a_values = [0, 1, 2, 3, 4]
+        b_values = [0, 1, 2, 3, 4]
+        _, trace = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
+        alignment = constrained_alignment(a_adj, b_adj, trace)
+        expected = [(0, 0), (1, 1), (2, 2), (3, -1), (4, 3), (-1, 4)]
+        self.assertEqual(alignment.tuples(), expected)
 
 if __name__ == '__main__':
     unittest.main()
