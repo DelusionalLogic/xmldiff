@@ -18,19 +18,25 @@ class TestConstrainedEditDistance(unittest.TestCase):
     def test_identical_trees(self):
         a_adj = [[1, 2], [], []]
         b_adj = [[1, 2], [], []]
-        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, [list(range(len(a_adj)))]*2)
+        a = list(range(len(a_adj)))
+        b = list(range(len(a_adj)))
+        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a, b))
         self.assertEqual(distance, 0)
 
     def test_different_trees(self):
         a_adj = [[1, 2], [], []]
         b_adj = [[1], [2], []]
-        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, [list(range(len(a_adj)))]*2)
+        a = list(range(len(a_adj)))
+        b = list(range(len(a_adj)))
+        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a, b))
         self.assertEqual(distance, 2)
 
     def test_add_node(self):
         a_adj = [[1], []]
         b_adj = [[1, 2], [], []]
-        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, [list(range(len(b_adj)))]*2)
+        a = list(range(len(b_adj)))
+        b = list(range(len(b_adj)))
+        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a, b))
         self.assertEqual(distance, 1)
 
     def test_remove_node(self):
@@ -42,7 +48,9 @@ class TestConstrainedEditDistance(unittest.TestCase):
     def test_single_node_trees(self):
         a_adj = [[]]
         b_adj = [[]]
-        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, [[0], [0]])
+        a = [0]
+        b = [0]
+        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a, b))
         self.assertEqual(distance, 0)
 
     def test_multi_level_trees(self):
@@ -56,7 +64,7 @@ class TestConstrainedEditDistance(unittest.TestCase):
         b_adj = [[1, 2], [], []]
         a_values = [0, 1, 2]
         b_values = [0, 2, 1]
-        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, [a_values, b_values])
+        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
         self.assertEqual(distance, 2)
 
 if __name__ == '__main__':
