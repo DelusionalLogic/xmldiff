@@ -15,6 +15,14 @@ class TestConstrainedEditDistance(unittest.TestCase):
         distance, _ = constrained_edit_distance(a_adj, b_adj, cost)
         self.assertEqual(distance, 0)
 
+    def test_single_node_trees(self):
+        a_adj = [[]]
+        b_adj = [[]]
+        a_values = [0]
+        b_values = [0]
+        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
+        self.assertEqual(distance, 0)
+
     def test_identical_trees(self):
         a_adj = [[1, 2], [], []]
         b_adj = [[1, 2], [], []]
@@ -46,14 +54,6 @@ class TestConstrainedEditDistance(unittest.TestCase):
         b_values = [0, 1]
         distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
         self.assertEqual(distance, 1)
-
-    def test_single_node_trees(self):
-        a_adj = [[]]
-        b_adj = [[]]
-        a_values = [0]
-        b_values = [0]
-        distance, _ = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
-        self.assertEqual(distance, 0)
 
     def test_multi_level_trees(self):
         a_adj = [[1, 4], [2, 3], [], [], []]
