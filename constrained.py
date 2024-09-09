@@ -14,12 +14,13 @@ a_adj = [[1, 3], [2], [], []]
 b = [0, 1, 3, 2, 4]
 b_adj = [[1, 2], [], [3, 4], [], []]
 
-def cost(ai, bi):
+def cost(ai, bi, data):
     if ai is None:
         return 1
     if bi is None:
         return 1
 
+    (a, b) = data
     if a[ai] == b[bi]:
         return 0
 
@@ -30,7 +31,10 @@ class Cmd(Enum):
     REMOVE = 2
     ADD = 3
 
-def constrained_edit_distance(a_adj, b_adj, cost):
+def constrained_edit_distance(a_adj, b_adj, cost, data=None):
+    if len(a_adj) == 0 and len(b_adj) == 0:
+        return 0, None
+
     cost_n = np.empty((len(a_adj)+1, len(b_adj)+1), dtype=int)
     cost_f = np.empty((len(a_adj)+1, len(b_adj)+1), dtype=int)
     trace = [[None for _ in range(len(b_adj)+1)] for _ in range(len(a_adj)+1)]
@@ -41,12 +45,12 @@ def constrained_edit_distance(a_adj, b_adj, cost):
         cost_f[i+1][0] = 0
         for c in a_adj[i]:
             cost_f[i+1][0] += cost_n[c+1][0]
-        cost_n[i+1][0] = cost_f[i+1][0] + cost(i, None)
+        cost_n[i+1][0] = cost_f[i+1][0] + cost(i, None, data)
     for j in reversed(range(len(b_adj))):
         cost_f[0][j+1] = 0
         for c in b_adj[j]:
             cost_f[0][j+1] += cost_n[0][c+1]
-        cost_n[0][j+1] = cost_f[0][j+1] + cost(None, j)
+        cost_n[0][j+1] = cost_f[0][j+1] + cost(None, j, data)
 
     def seq_dist(ai, bi):
         if ai is None:
@@ -56,7 +60,6 @@ def constrained_edit_distance(a_adj, b_adj, cost):
 
         return cost_n[ai+1][bi+1]
 
-    cost_e = np.empty((len(a_adj)+1, len(b_adj)+1), dtype=int)
     for i in reversed(range(len(a_adj))):
         for j in reversed(range(len(b_adj))):
             choices = [
@@ -85,7 +88,7 @@ def constrained_edit_distance(a_adj, b_adj, cost):
 
 
             choices = [
-                cost_f[i+1][j+1] + cost(i, j)
+                cost_f[i+1][j+1] + cost(i, j, data)
             ]
             n_traces = [
                 (Cmd.MATCH, None)
@@ -106,7 +109,8 @@ def constrained_edit_distance(a_adj, b_adj, cost):
             n_min = np.argmin(choices)
             cost_n[i+1][j+1] = choices[n_min]
             trace[i+1][j+1] = (forest_trace, n_traces[n_min])
-    return (cost_n[1][1], trace)
+
+    return (cost_n[1][1].item(), trace)
 
 # (cost, trace) = constrained_edit_distance(a_adj, b_adj, cost)
 
