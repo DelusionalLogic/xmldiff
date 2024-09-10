@@ -47,15 +47,7 @@ def argmin(a: Iterator[int]) -> tuple[int, int]:
 
 type TraceMatrix = list[list[tuple[Cmd, int | edist.alignment.Alignment | None]]]
 
-def constrained_edit_distance(a_adj, b_adj, cost, data=None) -> tuple[int, Optional[tuple[TraceMatrix, TraceMatrix]]]:
-    if len(a_adj) == 0 and len(b_adj) == 0:
-        return 0, None
-
-    cost_n = np.empty((len(a_adj)+1, len(b_adj)+1), dtype=int)
-    cost_f = np.empty((len(a_adj)+1, len(b_adj)+1), dtype=int)
-    trace_n : TraceMatrix = [[(Cmd.UNSET, None) for _ in range(len(b_adj)+1)] for _ in range(len(a_adj)+1)]
-    trace_f : TraceMatrix = [[(Cmd.UNSET, None) for _ in range(len(b_adj)+1)] for _ in range(len(a_adj)+1)]
-
+def _constrained_edit_distance_core(a_adj, b_adj, cost, data, cost_n, cost_f, trace_n, trace_f):
     cost_n[0][0] = 0
     cost_f[0][0] = 0
     for i in reversed(range(len(a_adj))):
@@ -74,7 +66,6 @@ def constrained_edit_distance(a_adj, b_adj, cost, data=None) -> tuple[int, Optio
             return cost_n[0][bi+1]
         if bi is None:
             return cost_n[ai+1][0]
-
         return cost_n[ai+1][bi+1]
 
     for i in reversed(range(len(a_adj))):
@@ -126,7 +117,17 @@ def constrained_edit_distance(a_adj, b_adj, cost, data=None) -> tuple[int, Optio
             cost_n[i+1][j+1] = choices[n_min]
             trace_n[i+1][j+1] = n_traces[n_min]
 
-    return (cost_n[1][1].item(), (trace_f, trace_n))
+def constrained_edit_distance(a_adj, b_adj, cost, data=None) -> tuple[int, Optional[tuple[TraceMatrix, TraceMatrix]]]:
+    if len(a_adj) == 0 and len(b_adj) == 0:
+        return 0, None
+
+    cost_n = np.empty((len(a_adj)+1, len(b_adj)+1), dtype=int)
+    cost_f = np.empty((len(a_adj)+1, len(b_adj)+1), dtype=int)
+    trace_n : TraceMatrix = [[(Cmd.UNSET, None) for _ in range(len(b_adj)+1)] for _ in range(len(a_adj)+1)]
+    trace_f : TraceMatrix = [[(Cmd.UNSET, None) for _ in range(len(b_adj)+1)] for _ in range(len(a_adj)+1)]
+
+    _constrained_edit_distance_core(a_adj, b_adj, cost, data, cost_n, cost_f, trace_n, trace_f)
+    return cost_n[1][1].item(), (trace_f, trace_n))
 
 def constrained_alignment(a_adj, b_adj, trace: tuple[TraceMatrix, TraceMatrix]):
     if len(a_adj) == 0 and len(b_adj) == 0:
