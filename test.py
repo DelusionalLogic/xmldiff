@@ -1,10 +1,5 @@
 import unittest
 
-import numpy as np
-from edist import (
-    alignment,
-)
-
 from constrained import (
     constrained_alignment,
     constrained_edit_distance,
@@ -21,9 +16,7 @@ class TestConstrainedEditDistance(unittest.TestCase):
         b_adj = []
         distance, trace = constrained_edit_distance(a_adj, b_adj, cost)
         self.assertEqual(distance, 0)
-
-        alignment = constrained_alignment(a_adj, b_adj, trace)
-        self.assertEqual(alignment_to_tuple(alignment), [])
+        self.assertIsNone(trace)
 
     def test_single_node_trees(self):
         a_adj = [[]]
@@ -33,6 +26,7 @@ class TestConstrainedEditDistance(unittest.TestCase):
         distance, trace = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
         self.assertEqual(distance, 0)
 
+        assert trace is not None
         alignment = constrained_alignment(a_adj, b_adj, trace)
         self.assertEqual(alignment_to_tuple(alignment), [(0, 0)])
 
@@ -44,6 +38,7 @@ class TestConstrainedEditDistance(unittest.TestCase):
         distance, trace = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
         self.assertEqual(distance, 0)
 
+        assert trace is not None
         alignment = constrained_alignment(a_adj, b_adj, trace)
         self.assertEqual(alignment_to_tuple(alignment), [(0, 0), (1, 1), (2, 2)])
 
@@ -55,6 +50,7 @@ class TestConstrainedEditDistance(unittest.TestCase):
         distance, trace = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
         self.assertEqual(distance, 2)
 
+        assert trace is not None
         alignment = constrained_alignment(a_adj, b_adj, trace)
         self.assertEqual(alignment_to_tuple(alignment), [(0, 0), (2, -1), (1, 1), (-1, 2)])
 
@@ -66,6 +62,7 @@ class TestConstrainedEditDistance(unittest.TestCase):
         distance, trace = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
         self.assertEqual(distance, 1)
 
+        assert trace is not None
         alignment = constrained_alignment(a_adj, b_adj, trace)
         self.assertEqual(alignment_to_tuple(alignment), [(0, 0), (-1, 2), (1, 1)])
 
@@ -77,6 +74,7 @@ class TestConstrainedEditDistance(unittest.TestCase):
         distance, trace = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
         self.assertEqual(distance, 1)
 
+        assert trace is not None
         alignment = constrained_alignment(a_adj, b_adj, trace)
         self.assertEqual(alignment_to_tuple(alignment), [(0, 0), (2, -1), (1, 1)])
 
@@ -88,6 +86,7 @@ class TestConstrainedEditDistance(unittest.TestCase):
         distance, trace = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
         self.assertEqual(distance, 2)
 
+        assert trace is not None
         alignment = constrained_alignment(a_adj, b_adj, trace)
         self.assertEqual(alignment_to_tuple(alignment), [(0, 0), (1, 1), (3, -1), (2, 2), (-1, 3), (4, 4)])
 
@@ -99,6 +98,7 @@ class TestConstrainedEditDistance(unittest.TestCase):
         distance, trace = constrained_edit_distance(a_adj, b_adj, cost, (a_values, b_values))
         self.assertEqual(distance, 2)
 
+        assert trace is not None
         alignment = constrained_alignment(a_adj, b_adj, trace)
         self.assertEqual(alignment_to_tuple(alignment), [(0, 0), (1, 1), (2, 2)])
 
