@@ -12,7 +12,6 @@ from typing import (
     Union,
 )
 
-import edist.alignment
 import edist.sed
 import edist.tree_edits
 import numpy as np
@@ -50,7 +49,8 @@ def argmin(a: Iterator[int]) -> Tuple[int, int]:
             min_arg = i+1
     return (min_arg, min_val)
 
-TraceMatrix = List[List[Tuple[Cmd, Union[int, edist.alignment.Alignment, None]]]]
+type Alignment = List[Tuple[int, int]]
+type TraceMatrix = List[List[Tuple[Cmd, Union[int, Alignment, None]]]]
 
 T = TypeVar("T")
 def _constrained_edit_distance_core(
@@ -90,8 +90,8 @@ def _constrained_edit_distance_core(
             choices = [
                 edist.sed.sed(a_adj[i], b_adj[j], delta=seq_dist)
             ]
-            alignment : edist.alignment.Alignment = edist.sed.sed_backtrace(a_adj[i], b_adj[j], delta=seq_dist)
-            f_traces = [
+            alignment : Alignment = [(e._right, e._left) for e in edist.sed.sed_backtrace(a_adj[i], b_adj[j], delta=seq_dist)]
+            f_traces : List[Tuple[Cmd, int | Alignment]] = [
                 (Cmd.MATCH, alignment)
             ]
 
@@ -114,7 +114,7 @@ def _constrained_edit_distance_core(
             choices = [
                 cost_f[i+1][j+1] + cost(i, j, data)
             ]
-            n_traces : list[tuple[Cmd, Optional[int]]] = [
+            n_traces : List[Tuple[Cmd, Optional[int]]] = [
                 (Cmd.MATCH, None)
             ]
 
@@ -155,22 +155,22 @@ def constrained_alignment(
     a_adj: List[List[int]],
     b_adj: List[List[int]],
     trace: Tuple[TraceMatrix, TraceMatrix]
-) -> edist.alignment.Alignment:
+) -> Alignment:
     if len(a_adj) == 0 and len(b_adj) == 0:
-        return edist.alignment.Alignment()
+        return []
 
-    alignment = edist.alignment.Alignment()
+    alignment = []
     to_compute: List[Tuple[int, int]] = [
         (1, 1)
     ]
 
-    def do_subtree(alignment: edist.alignment.Alignment, cursor: int, tree: List[List[int]], op: Cmd) -> None:
+    def do_subtree(alignment: Alignment, cursor: int, tree: List[List[int]], op: Cmd) -> None:
         remain = 1
         while remain > 0:
             if op == Cmd.REMOVE:
-                alignment.append_tuple(cursor, -1)
+                alignment.append((cursor, -1))
             else:
-                alignment.append_tuple(-1, cursor)
+                alignment.append((-1, cursor))
             remain += len(tree[cursor])
             cursor += 1
             remain -= 1
@@ -181,16 +181,16 @@ def constrained_alignment(
         (t_match, t_arg) = trace_n[i][j]
 
         if t_match == Cmd.MATCH:
-            alignment.append_tuple(i-1, j-1)
+            alignment.append((i-1, j-1))
             (f_match, f_arg) = trace_f[i][j]
 
             if f_match == Cmd.MATCH:
-                assert isinstance(f_arg, edist.alignment.Alignment)
-                for e in reversed(f_arg):
-                    if e._right >= 0 and e._left >= 0:
+                assert isinstance(f_arg, list)
+                for (right, left) in reversed(f_arg):
+                    if right >= 0 and left >= 0:
                         # Requirese us to recurse
-                        na = a_adj[i-1][e._left]
-                        nb = b_adj[j-1][e._right]
+                        na = a_adj[i-1][left]
+                        nb = b_adj[j-1][right]
                         to_compute.append((na+1, nb+1))
                         continue
 
@@ -198,12 +198,12 @@ def constrained_alignment(
                     tree = None
                     op = None
                     # These we can handle inline
-                    if e._right < 0:
-                        start = a_adj[i-1][e._left]
+                    if right < 0:
+                        start = a_adj[i-1][left]
                         tree = a_adj
                         op = Cmd.REMOVE
-                    elif e._left < 0:
-                        start = b_adj[j-1][e._right]
+                    elif left < 0:
+                        start = b_adj[j-1][right]
                         tree = b_adj
                         op = Cmd.ADD
                     else:
@@ -215,7 +215,7 @@ def constrained_alignment(
         elif t_match == Cmd.ADD:
             # Add means we inject a node right here, but continue mapping the
             # current node from a into one of the children in b
-            alignment.append_tuple(-1, j-1)
+            alignment.append((-1, j-1))
             for t,  t_node in enumerate(b_adj[j-1]):
                 if t == t_arg:
                     to_compute.append((i, t_node+1))
@@ -225,7 +225,3 @@ def constrained_alignment(
             raise NotImplementedError()
 
     return alignment
-
-# script = edist.tree_edits.alignment_to_script(alignment, a, a_adj, b, b_adj)
-# print(script)
-# print(script.apply(a, a_adj))
