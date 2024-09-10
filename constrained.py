@@ -1,10 +1,14 @@
-from enum import Enum
+from enum import (
+    Enum,
+)
 from typing import (
-    Iterator,
-    Optional,
-    List,
-    Tuple,
     Any,
+    Callable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
     Union,
 )
 
@@ -48,11 +52,12 @@ def argmin(a: Iterator[int]) -> Tuple[int, int]:
 
 TraceMatrix = List[List[Tuple[Cmd, Union[int, edist.alignment.Alignment, None]]]]
 
+T = TypeVar("T")
 def _constrained_edit_distance_core(
     a_adj: List[List[int]],
     b_adj: List[List[int]],
-    cost: Any,
-    data: Any,
+    cost: Callable[[Optional[int], Optional[int], T], int],
+    data: T,
     cost_n: np.ndarray,
     cost_f: np.ndarray,
     trace_n: TraceMatrix,
@@ -73,8 +78,10 @@ def _constrained_edit_distance_core(
 
     def seq_dist(ai: Optional[int], bi: Optional[int]) -> int:
         if ai is None:
+            assert bi is not None
             return cost_n[0][bi+1]
         if bi is None:
+            assert ai is not None
             return cost_n[ai+1][0]
         return cost_n[ai+1][bi+1]
 
@@ -199,6 +206,9 @@ def constrained_alignment(
                         start = b_adj[j-1][e._right]
                         tree = b_adj
                         op = Cmd.ADD
+                    else:
+                        raise Exception("Invalid state")
+
                     do_subtree(alignment, start, tree, op)
             else:
                 raise NotImplementedError()
