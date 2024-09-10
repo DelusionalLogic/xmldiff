@@ -1,10 +1,11 @@
-from enum import (
-    Enum,
-    auto,
-)
+from enum import Enum
 from typing import (
     Iterator,
     Optional,
+    List,
+    Tuple,
+    Any,
+    Union,
 )
 
 import edist.alignment
@@ -12,13 +13,13 @@ import edist.sed
 import edist.tree_edits
 import numpy as np
 
-a = [0, 1, 2, 3]
-a_adj = [[1, 3], [2], [], []]
+a: List[int] = [0, 1, 2, 3]
+a_adj: List[List[int]] = [[1, 3], [2], [], []]
 
-b = [0, 1, 3, 2, 4]
-b_adj = [[1, 2], [], [3, 4], [], []]
+b: List[int] = [0, 1, 3, 2, 4]
+b_adj: List[List[int]] = [[1, 2], [], [3, 4], [], []]
 
-def cost(ai, bi, data):
+def cost(ai: Optional[int], bi: Optional[int], data: Tuple[List[int], List[int]]) -> int:
     if ai is None:
         return 1
     if bi is None:
@@ -36,7 +37,7 @@ class Cmd(Enum):
     REMOVE = 2
     ADD = 3
 
-def argmin(a: Iterator[int]) -> tuple[int, int]:
+def argmin(a: Iterator[int]) -> Tuple[int, int]:
     min_val = next(a)
     min_arg = 0
     for i, v in enumerate(a):
@@ -45,9 +46,18 @@ def argmin(a: Iterator[int]) -> tuple[int, int]:
             min_arg = i+1
     return (min_arg, min_val)
 
-type TraceMatrix = list[list[tuple[Cmd, int | edist.alignment.Alignment | None]]]
+TraceMatrix = List[List[Tuple[Cmd, Union[int, edist.alignment.Alignment, None]]]]
 
-def _constrained_edit_distance_core(a_adj, b_adj, cost, data, cost_n, cost_f, trace_n, trace_f):
+def _constrained_edit_distance_core(
+    a_adj: List[List[int]],
+    b_adj: List[List[int]],
+    cost: Any,
+    data: Any,
+    cost_n: np.ndarray,
+    cost_f: np.ndarray,
+    trace_n: TraceMatrix,
+    trace_f: TraceMatrix
+) -> None:
     cost_n[0][0] = 0
     cost_f[0][0] = 0
     for i in reversed(range(len(a_adj))):
@@ -61,7 +71,7 @@ def _constrained_edit_distance_core(a_adj, b_adj, cost, data, cost_n, cost_f, tr
             cost_f[0][j+1] += cost_n[0][c+1]
         cost_n[0][j+1] = cost_f[0][j+1] + cost(None, j, data)
 
-    def seq_dist(ai, bi):
+    def seq_dist(ai: Optional[int], bi: Optional[int]) -> int:
         if ai is None:
             return cost_n[0][bi+1]
         if bi is None:
@@ -117,28 +127,37 @@ def _constrained_edit_distance_core(a_adj, b_adj, cost, data, cost_n, cost_f, tr
             cost_n[i+1][j+1] = choices[n_min]
             trace_n[i+1][j+1] = n_traces[n_min]
 
-def constrained_edit_distance(a_adj, b_adj, cost, data=None) -> tuple[int, Optional[tuple[TraceMatrix, TraceMatrix]]]:
+def constrained_edit_distance(
+    a_adj: List[List[int]],
+    b_adj: List[List[int]],
+    cost: Any,
+    data: Any = None
+) -> Tuple[int, Optional[Tuple[TraceMatrix, TraceMatrix]]]:
     if len(a_adj) == 0 and len(b_adj) == 0:
         return 0, None
 
     cost_n = np.empty((len(a_adj)+1, len(b_adj)+1), dtype=int)
     cost_f = np.empty((len(a_adj)+1, len(b_adj)+1), dtype=int)
-    trace_n : TraceMatrix = [[(Cmd.UNSET, None) for _ in range(len(b_adj)+1)] for _ in range(len(a_adj)+1)]
-    trace_f : TraceMatrix = [[(Cmd.UNSET, None) for _ in range(len(b_adj)+1)] for _ in range(len(a_adj)+1)]
+    trace_n: TraceMatrix = [[(Cmd.UNSET, None) for _ in range(len(b_adj)+1)] for _ in range(len(a_adj)+1)]
+    trace_f: TraceMatrix = [[(Cmd.UNSET, None) for _ in range(len(b_adj)+1)] for _ in range(len(a_adj)+1)]
 
     _constrained_edit_distance_core(a_adj, b_adj, cost, data, cost_n, cost_f, trace_n, trace_f)
-    return cost_n[1][1].item(), (trace_f, trace_n))
+    return cost_n[1][1].item(), (trace_f, trace_n)
 
-def constrained_alignment(a_adj, b_adj, trace: tuple[TraceMatrix, TraceMatrix]):
+def constrained_alignment(
+    a_adj: List[List[int]],
+    b_adj: List[List[int]],
+    trace: Tuple[TraceMatrix, TraceMatrix]
+) -> edist.alignment.Alignment:
     if len(a_adj) == 0 and len(b_adj) == 0:
         return edist.alignment.Alignment()
 
     alignment = edist.alignment.Alignment()
-    to_compute = [
+    to_compute: List[Tuple[int, int]] = [
         (1, 1)
     ]
 
-    def do_subtree(alignment, cursor, tree, op):
+    def do_subtree(alignment: edist.alignment.Alignment, cursor: int, tree: List[List[int]], op: Cmd) -> None:
         remain = 1
         while remain > 0:
             if op == Cmd.REMOVE:
