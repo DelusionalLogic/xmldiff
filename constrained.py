@@ -31,6 +31,7 @@ def cost(ai, bi, data):
     return 1
 
 class Cmd(Enum):
+    UNSET = 0
     MATCH = 1
     REMOVE = 2
     ADD = 3
@@ -44,13 +45,16 @@ def argmin(a: Iterator[int]) -> tuple[int, int]:
             min_arg = i+1
     return (min_arg, min_val)
 
-def constrained_edit_distance(a_adj, b_adj, cost, data=None):
+type TraceMatrix = list[list[tuple[Cmd, int | edist.alignment.Alignment | None]]]
+
+def constrained_edit_distance(a_adj, b_adj, cost, data=None) -> tuple[int, Optional[tuple[TraceMatrix, TraceMatrix]]]:
     if len(a_adj) == 0 and len(b_adj) == 0:
         return 0, None
 
     cost_n = np.empty((len(a_adj)+1, len(b_adj)+1), dtype=int)
     cost_f = np.empty((len(a_adj)+1, len(b_adj)+1), dtype=int)
-    trace = [[None for _ in range(len(b_adj)+1)] for _ in range(len(a_adj)+1)]
+    trace_n : TraceMatrix = [[(Cmd.UNSET, None) for _ in range(len(b_adj)+1)] for _ in range(len(a_adj)+1)]
+    trace_f : TraceMatrix = [[(Cmd.UNSET, None) for _ in range(len(b_adj)+1)] for _ in range(len(a_adj)+1)]
 
     cost_n[0][0] = 0
     cost_f[0][0] = 0
@@ -78,7 +82,7 @@ def constrained_edit_distance(a_adj, b_adj, cost, data=None):
             choices = [
                 edist.sed.sed(a_adj[i], b_adj[j], delta=seq_dist)
             ]
-            alignment = edist.sed.sed_backtrace(a_adj[i], b_adj[j], delta=seq_dist)
+            alignment : edist.alignment.Alignment = edist.sed.sed_backtrace(a_adj[i], b_adj[j], delta=seq_dist)
             f_traces = [
                 (Cmd.MATCH, alignment)
             ]
@@ -97,8 +101,7 @@ def constrained_edit_distance(a_adj, b_adj, cost, data=None):
 
             f_min = np.argmin(choices)
             cost_f[i+1][j+1] = choices[f_min]
-            forest_trace = f_traces[f_min]
-
+            trace_f[i+1][j+1] = f_traces[f_min]
 
             choices = [
                 cost_f[i+1][j+1] + cost(i, j, data)
@@ -121,11 +124,11 @@ def constrained_edit_distance(a_adj, b_adj, cost, data=None):
 
             n_min = np.argmin(choices)
             cost_n[i+1][j+1] = choices[n_min]
-            trace[i+1][j+1] = (forest_trace, n_traces[n_min])
+            trace_n[i+1][j+1] = n_traces[n_min]
 
-    return (cost_n[1][1].item(), trace)
+    return (cost_n[1][1].item(), (trace_f, trace_n))
 
-def constrained_alignment(a_adj, b_adj, trace):
+def constrained_alignment(a_adj, b_adj, trace: tuple[TraceMatrix, TraceMatrix]):
     if len(a_adj) == 0 and len(b_adj) == 0:
         return edist.alignment.Alignment()
 
@@ -145,15 +148,17 @@ def constrained_alignment(a_adj, b_adj, trace):
             cursor += 1
             remain -= 1
 
+    (trace_f, trace_n) = trace
     while len(to_compute) > 0:
         i, j = to_compute.pop()
-        (t_match, t_arg) = trace[i][j][1]
+        (t_match, t_arg) = trace_n[i][j]
 
         if t_match == Cmd.MATCH:
             alignment.append_tuple(i-1, j-1)
-            (f_match, f_arg) = trace[i][j][0]
+            (f_match, f_arg) = trace_f[i][j]
 
             if f_match == Cmd.MATCH:
+                assert isinstance(f_arg, edist.alignment.Alignment)
                 for e in reversed(f_arg):
                     if e._right >= 0 and e._left >= 0:
                         # Requirese us to recurse
@@ -176,7 +181,7 @@ def constrained_alignment(a_adj, b_adj, trace):
                         op = Cmd.ADD
                     do_subtree(alignment, start, tree, op)
             else:
-                assert(False)
+                raise NotImplementedError()
         elif t_match == Cmd.ADD:
             # Add means we inject a node right here, but continue mapping the
             # current node from a into one of the children in b
@@ -187,7 +192,7 @@ def constrained_alignment(a_adj, b_adj, trace):
                 else:
                     do_subtree(alignment, t_node, b_adj, Cmd.ADD)
         else:
-            assert(False)
+            raise NotImplementedError()
 
     return alignment
 
