@@ -98,7 +98,7 @@ def _constrained_edit_distance_core(
             fmin_s = None
             if len(a_adj[i]) > 0:
                 fmin_s, fval = argmin((cost_f[a_adj[i][s]+1][j+1] - cost_f[a_adj[i][s]+1][0] for s in range(len(a_adj[i]))))
-                choices.append(cost_f[0][j+1] + fval)
+                choices.append(cost_f[i+1][0] + fval)
                 f_traces.append((Cmd.REMOVE, fmin_s))
 
             fmin_t = None
@@ -137,8 +137,8 @@ def _constrained_edit_distance_core(
 def constrained_edit_distance(
     a_adj: List[List[int]],
     b_adj: List[List[int]],
-    cost: Any,
-    data: Any = None
+    cost: Callable[[Optional[int], Optional[int], T], int],
+    data: T = None,
 ) -> Tuple[int, Optional[Tuple[TraceMatrix, TraceMatrix]]]:
     if len(a_adj) == 0 and len(b_adj) == 0:
         return 0, None
@@ -178,38 +178,57 @@ def constrained_alignment(
     (trace_f, trace_n) = trace
     while len(to_compute) > 0:
         i, j = to_compute.pop()
+        if i == -1:
+            do_subtree(alignment, j-1, b_adj, Cmd.ADD)
+            continue
+        if j == -1:
+            do_subtree(alignment, i-1, a_adj, Cmd.REMOVE)
+            continue
         (t_match, t_arg) = trace_n[i][j]
 
         if t_match == Cmd.MATCH:
             alignment.append((i-1, j-1))
             (f_match, f_arg) = trace_f[i][j]
 
+            # @INCOMPLETE We might need this later. I don't have a case that
+            # tests it yet
+            # while f_match != Cmd.MATCH:
+            #     assert isinstance(f_arg, int)
+
+            #     if f_match == Cmd.ADD:
+            #         siblings = b_adj[j-1]
+            #         tree = b_adj
+            #     elif f_match == Cmd.REMOVE:
+            #         siblings = a_adj[i-1]
+            #         tree = a_adj
+            #     else:
+            #         raise Exception()
+
+            #     resolved = None
+            #     for t, t_node in enumerate(siblings):
+            #         if t == f_arg:
+            #             resolved = t_node
+            #         else:
+            #             do_subtree(alignment, t_node, tree, f_match)
+            #     assert resolved is not None
+
+            #     if f_match == Cmd.ADD:
+            #         j = resolved+1
+            #     elif f_match == Cmd.REMOVE:
+            #         i = resolved+1
+            #     else:
+            #         raise Exception()
+
+            #     (f_match, f_arg) = trace_f[i][j]
+
             if f_match == Cmd.MATCH:
                 assert isinstance(f_arg, list)
                 for (right, left) in reversed(f_arg):
-                    if right >= 0 and left >= 0:
-                        # Requirese us to recurse
-                        na = a_adj[i-1][left]
-                        nb = b_adj[j-1][right]
-                        to_compute.append((na+1, nb+1))
-                        continue
-
-                    start = None
-                    tree = None
-                    op = None
-                    # These we can handle inline
-                    if right < 0:
-                        start = a_adj[i-1][left]
-                        tree = a_adj
-                        op = Cmd.REMOVE
-                    elif left < 0:
-                        start = b_adj[j-1][right]
-                        tree = b_adj
-                        op = Cmd.ADD
-                    else:
-                        raise Exception("Invalid state")
-
-                    do_subtree(alignment, start, tree, op)
+                    # @HACK We set it to -2 here because we add 1 in the final
+                    # line. A little messy.
+                    na = a_adj[i-1][left] if left >= 0 else -2
+                    nb = b_adj[j-1][right] if right >= 0 else -2
+                    to_compute.append((na+1, nb+1))
             else:
                 raise NotImplementedError()
         elif t_match == Cmd.ADD:
@@ -220,7 +239,7 @@ def constrained_alignment(
                 if t == t_arg:
                     to_compute.append((i, t_node+1))
                 else:
-                    do_subtree(alignment, t_node, b_adj, Cmd.ADD)
+                    to_compute.append((-1, t_node+1))
         else:
             raise NotImplementedError()
 

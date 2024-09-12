@@ -7,6 +7,9 @@
 		</object>
 		<object>
 			<attr name="id" value="2" />
+		</object>
+		<object>
+			<attr name="id" value="2" />
 			<attr name="name" value="some other cool object" />
 		</object>
 	</objects>
