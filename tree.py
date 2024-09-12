@@ -32,11 +32,22 @@ xmlparser = ParserCreate()
 nodes = [
 ]
 
+chunks = [
+]
+
+chunk_stack = []
 def start_element(name: str, attrs: Dict[str, str]):
+    chunk_stack.append(len(nodes))
     nodes.append(Node(name, xmlparser.CurrentByteIndex))
+    chunks.append((chunk_stack[-1], xmlparser.CurrentByteIndex))
+
+def end_element(name: str):
+    nid = chunk_stack.pop()
+    if nid != chunks[-1][0]:
+        chunks.append((nid, xmlparser.CurrentByteIndex))
 
 xmlparser.StartElementHandler = start_element
-# xmlparser.EndElementHandler = end_element
+xmlparser.EndElementHandler = end_element
 
 with open("file_a.xml", "rb") as f:
     xmlparser.ParseFile(f)
@@ -64,20 +75,22 @@ def get_next(some_iterable, window=1):
     return zip_longest(items, nexts)
 
 print(nodes)
+print(chunks)
 with open("file_a.xml", "rb") as f:
     f.seek(0, SEEK_END)
     file_len = f.tell()
-    for (i, ((node, next), state)) in enumerate(zip(get_next(nodes), state)):
-        sys.stdout.write(f"<<{state}>>")
+    f.seek(0)
+    for (i, (chunk, next)) in enumerate(get_next(chunks)):
+        sys.stdout.write(f"<<{state[chunk[0]]}>>")
         sys.stdout.flush()
         # if i % 2 == 0:
         #     sys.stdout.buffer.write(b"\033[46m")
         # else:
         #     sys.stdout.buffer.write(b"\033[42m")
-        f.seek(node.location)
-        len = file_len - node.location
+        # f.seek(chunk[1])
+        len = file_len - chunk[1]
         if next is not None:
-            len = next.location - node.location
+            len = next[1] - chunk[1]
         sys.stdout.buffer.write(f.read(len))
 
 # parser = etree.XMLParser()
