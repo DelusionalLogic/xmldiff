@@ -6,6 +6,7 @@ from enum import (
 )
 from io import (
     SEEK_END,
+    SEEK_SET,
 )
 from itertools import (
     islice,
@@ -18,6 +19,7 @@ from typing import (
 from xml.parsers.expat import (
     ParserCreate,
 )
+from edist.sed import sed_string
 
 from constrained import constrained_alignment, constrained_edit_distance
 
@@ -54,6 +56,7 @@ def read_file(path: Path):
             pos = chunks[-1][1]
         chunks.append((nid, pos, True))
 
+    xmlparser.ordered_attributes = True
     xmlparser.StartElementHandler = start_element
     xmlparser.EndElementHandler = end_element
 
@@ -61,28 +64,15 @@ def read_file(path: Path):
         xmlparser.ParseFile(f)
     return (nodes, chunks, structure)
 
-(nodes_a, chunks_a, structure_a) = read_file(Path("file_a.xml"))
-(nodes_b, chunks_b, structure_b) = read_file(Path("file_b.xml"))
+(nodes_a, chunks_a, structure_a) = read_file(Path("old.xml"))
+(nodes_b, chunks_b, structure_b) = read_file(Path("new.xml"))
 
 class Kind(Enum):
     NOTHING = enum.auto()
     ADD = enum.auto()
     REMOVE = enum.auto()
 
-state = [
-    Kind.NOTHING,
-    Kind.NOTHING,
-    Kind.ADD,
-    Kind.NOTHING,
-    Kind.NOTHING,
-    Kind.NOTHING,
-    Kind.ADD,
-    Kind.NOTHING,
-    Kind.NOTHING,
-    Kind.NOTHING,
-    Kind.NOTHING,
-    Kind.REMOVE,
-]
+state = [ Kind.NOTHING for _ in chunks_b ]
 
 def get_next(some_iterable, window=1):
     items, nexts = tee(some_iterable, 2)
@@ -99,20 +89,20 @@ def scan_for_end_of_tag(buffer):
     return pos
 
 def cost(ai, bi, data):
-    if ai is None:
-        return 2
-    if bi is None:
-        return 2
-
     (a, b) = data
+    if ai is None:
+        return len(b[bi].name)
+    if bi is None:
+        return len(a[ai].name)
+
     if a[ai] == b[bi]:
         return 0
 
-    return 1
+    return sed_string(a[ai].name, b[bi].name)
 
 edit_cost, trace_matrix = constrained_edit_distance(structure_a, structure_b, cost, (nodes_a, nodes_b))
 assert(trace_matrix is not None)
-print(structure_a, structure_b)
+print(edit_cost)
 alignment = constrained_alignment(structure_a, structure_b, trace_matrix)
 
 print(alignment)
@@ -121,7 +111,7 @@ for (left, right) in alignment:
     if left == -1:
         state[right] = Kind.ADD
 
-with open("file_b.xml", "rb") as f:
+with open("new.xml", "rb") as f:
     f.seek(0, SEEK_END)
     file_len = f.tell()
     f.seek(0)
@@ -131,6 +121,7 @@ with open("file_b.xml", "rb") as f:
         if next is not None:
             len = next[1] - chunk[1]
 
+        f.seek(chunk[1], SEEK_SET)
         buffer = f.read(len)
 
         chunk_state = state[chunk[0]]

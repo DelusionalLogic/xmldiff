@@ -86,6 +86,7 @@ def _constrained_edit_distance_core(
         return cost_n[ai+1][bi+1]
 
     for i in reversed(range(len(a_adj))):
+        print(f"Computing column {i}")
         for j in reversed(range(len(b_adj))):
             choices = [
                 edist.sed.sed(a_adj[i], b_adj[j], delta=seq_dist)
@@ -147,6 +148,9 @@ def constrained_edit_distance(
     cost_f = np.empty((len(a_adj)+1, len(b_adj)+1), dtype=int)
     trace_n: TraceMatrix = [[(Cmd.UNSET, None) for _ in range(len(b_adj)+1)] for _ in range(len(a_adj)+1)]
     trace_f: TraceMatrix = [[(Cmd.UNSET, None) for _ in range(len(b_adj)+1)] for _ in range(len(a_adj)+1)]
+
+    print(cost_n.shape)
+    print(cost_f.shape)
 
     _constrained_edit_distance_core(a_adj, b_adj, cost, data, cost_n, cost_f, trace_n, trace_f)
     return cost_n[1][1].item(), (trace_f, trace_n)

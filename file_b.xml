@@ -1,16 +1,16 @@
 <root>
 	<attr name="id" value="1" />
 	<objects>
+		<ssssssssssssssssssssss>
+			<attr name="id" value="2" />
+			<attr name="name" value="some other cool object" />
+		</ssssssssssssssssssssss>
+		<objectaaaa>
+			<attr name="id" value="2" />
+		</objectaaaa>
 		<object>
 			<attr name="id" value="1" />
 			<attr name="name" value="some cool object" />
-		</object>
-		<object>
-			<attr name="id" value="2" />
-		</object>
-		<object>
-			<attr name="id" value="2" />
-			<attr name="name" value="some other cool object" />
 		</object>
 	</objects>
 </root>
