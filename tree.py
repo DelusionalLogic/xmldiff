@@ -23,6 +23,8 @@ from edist.sed import sed_string
 
 from constrained import constrained_alignment, constrained_edit_distance
 
+file_a = Path("file_a.xml")
+file_b = Path("file_b.xml")
 
 class Node:
     def __init__(self, name: str, location: int):
@@ -32,7 +34,7 @@ class Node:
     def __repr__(self):
         return f"{self.name}:{self.location}"
 
-def read_file(path: Path):
+def read_file(f):
     nodes = []
     chunks = []
     structure = []
@@ -52,27 +54,19 @@ def read_file(path: Path):
     def end_element(_: str):
         nid = chunk_stack.pop()
         pos = xmlparser.CurrentByteIndex
-        if nid == chunks[-1][0]:
-            pos = chunks[-1][1]
         chunks.append((nid, pos, True))
 
     xmlparser.ordered_attributes = True
     xmlparser.StartElementHandler = start_element
     xmlparser.EndElementHandler = end_element
 
-    with open(path, "rb") as f:
-        xmlparser.ParseFile(f)
+    xmlparser.ParseFile(f)
     return (nodes, chunks, structure)
-
-(nodes_a, chunks_a, structure_a) = read_file(Path("old.xml"))
-(nodes_b, chunks_b, structure_b) = read_file(Path("new.xml"))
 
 class Kind(Enum):
     NOTHING = enum.auto()
     ADD = enum.auto()
     REMOVE = enum.auto()
-
-state = [ Kind.NOTHING for _ in chunks_b ]
 
 def get_next(some_iterable, window=1):
     items, nexts = tee(some_iterable, 2)
@@ -80,6 +74,9 @@ def get_next(some_iterable, window=1):
     return zip_longest(items, nexts)
 
 def scan_for_end_of_tag(buffer):
+    # @HACK hacks on top of hacks
+    if buffer[0] != b'<'[0]:
+        return 0
     pos = 0
     # @HACK This is probably not very reliable. I have a patch pending in
     # python to expose the expat field we need, but this will do for now.
@@ -100,52 +97,160 @@ def cost(ai, bi, data):
 
     return sed_string(a[ai].name, b[bi].name)
 
-edit_cost, trace_matrix = constrained_edit_distance(structure_a, structure_b, cost, (nodes_a, nodes_b))
-assert(trace_matrix is not None)
-print(edit_cost)
-alignment = constrained_alignment(structure_a, structure_b, trace_matrix)
+def read_chunk(chunks, index, file, file_len):
+    chunk = chunks[index]
+    nchunk = chunks[index+1] if index+1 < len(chunks) else None
 
-print(alignment)
-for (left, right) in alignment:
-    state[right] = Kind.NOTHING
-    if left == -1:
-        state[right] = Kind.ADD
+    clen = file_len - chunk[1]
+    if nchunk is not None:
+        clen = nchunk[1] - chunk[1]
 
-with open("new.xml", "rb") as f:
-    f.seek(0, SEEK_END)
-    file_len = f.tell()
-    f.seek(0)
+    file.seek(chunk[1], SEEK_SET)
+    buffer = file.read(clen)
+    return buffer
+
+def write_chunk(chunks, index, file, file_len, out_stream=sys.stdout.buffer, color=None):
+    buffer = read_chunk(chunks, index, file, file_len)
+
+    if color is not None:
+        buffer = buffer.replace(b"\n", f"\\n\x1b\x5b0m\n\x1b\x5b{color}m".encode())
+        buffer = buffer.replace(b"\t", f"    ".encode())
+    out_stream.write(buffer)
+    out_stream.flush()
+
+def write_chunk_match(chunks_a, chunks_b, a_i, b_i, fa, fb, a_len, b_len, out_stream=sys.stdout.buffer):
+    a_buff = read_chunk(chunks_a, a_i, fa, a_len)
+    b_buff = read_chunk(chunks_b, b_i, fb, b_len)
+
+    if a_buff == b_buff:
+        out_stream.write(b_buff)
+    else:
+        out_stream.write(b"\x7b-")
+        out_stream.write(a_buff)
+        out_stream.write(b"-\x7d\x7b+")
+        out_stream.write(b_buff)
+        out_stream.write(b"+\x7d")
+
+    out_stream.flush()
+
+def merge_trees(fa, fb, out_stream):
+    (nodes_a, chunks_a, structure_a) = read_file(fa)
+    (nodes_b, chunks_b, structure_b) = read_file(fb)
+
+    edit_cost, trace_matrix = constrained_edit_distance(structure_a, structure_b, cost, (nodes_a, nodes_b))
+    assert(trace_matrix is not None)
+    print(edit_cost)
+    alignment = constrained_alignment(structure_a, structure_b, trace_matrix)
+
+    state_a = [ Kind.NOTHING for _ in chunks_a ]
+    state_b = [ Kind.NOTHING for _ in chunks_b ]
+
+    print(alignment)
+    for (left, right) in alignment:
+        if left >= 0:
+            state_a[left] = Kind.NOTHING if right >= 0 else Kind.REMOVE
+        if right >= 0:
+            state_b[right] = Kind.NOTHING if left >= 0 else Kind.ADD
+
+    fb.seek(0, SEEK_END)
+    file_b_len = fb.tell()
+    fb.seek(0)
+
+    fa.seek(0, SEEK_END)
+    file_a_len = fa.tell()
+    fa.seek(0)
+
     sys.stdout.flush()
-    for (i, (chunk, next)) in enumerate(get_next(chunks_b)):
-        len = file_len - chunk[1]
-        if next is not None:
-            len = next[1] - chunk[1]
+    # Two variabled to keep track of where in each file we are. We consume
+    # a chunk from the file when we output it in the result
+    a_num = 0
+    b_num = 0
+    # Keep track of if we are adding, deleting, or matching currently
+    state = 0
+    # Track of deep we are in the tree. Used to match up the close chunks. May
+    # not be necessary if we get sufficiently clever with the state field
+    a_depth = 0
+    b_depth = 0
+    for (left, right) in alignment:
+        # Match a single open tag
+        if left >= 0 and right >= 0:
+            if state != 0:
+                out_stream.write(b"-\x7d" if state == 1 else b"+\x7d")
+            state = 0
+            assert not chunks_a[a_num][2] and not chunks_b[b_num][2]
+            # @INCOMPLETE: We should do some deeper diff here.
+            write_chunk_match(chunks_a, chunks_b, a_num, b_num, fa, fb, file_a_len, file_b_len, out_stream)
+            a_num += 1
+            b_num += 1
+            a_depth += 1
+            b_depth += 1
+        elif left >= 0:
+            if state != 1:
+                out_stream.write(b"\x7b-" if state == 0 else b"+\x7d\x7b-")
+            state = 1
+            write_chunk(chunks_a, a_num, fa, file_a_len, out_stream)
+            a_num += 1
+            a_depth += 1
+        elif right >= 0:
+            if state != 2:
+                out_stream.write(b"\x7b+" if state == 0 else b"-\x7d\x7b+")
+            state = 2
+            write_chunk(chunks_b, b_num, fb, file_b_len, out_stream)
+            b_num += 1
+            b_depth += 1
 
-        f.seek(chunk[1], SEEK_SET)
-        buffer = f.read(len)
+        # Match some number of close tags, since closing one tag might then
+        # close the parent if we are the last child
+        # We start off closing trying to align the depth of the trees. If we
+        # are currently deeper in one tree, then we only close tags from that
+        # tree.
+        while a_num < len(chunks_a) and chunks_a[a_num][2] and a_depth > b_depth:
+            write_chunk(chunks_a, a_num, fa, file_a_len, out_stream)
+            a_num += 1
+            a_depth -= 1
+        while b_num < len(chunks_b) and chunks_b[b_num][2] and b_depth > a_depth:
+            write_chunk(chunks_b, b_num, fb, file_b_len, out_stream)
+            b_num += 1
+            b_depth -= 1
+        # Once the trees are aligned in depth, we try and close from both
+        if a_depth == b_depth:
+            # We can get away with only checking a_depth
+            while a_depth > 0 and chunks_a[a_num][2] and chunks_b[b_num][2]:
+                if state != 0:
+                    out_stream.write(b"-\x7d" if state == 1 else b"+\x7d")
+                state = 0
+                # @INCOMPLETE We'll likely need to do some diff here too
+                write_chunk_match(chunks_a, chunks_b, a_num, b_num, fa, fb, file_a_len, file_b_len, out_stream)
+                a_num += 1
+                b_num += 1
+                # We only keep track of a_depth in the loop since a and b are equal
+                a_depth -= 1
+            # now we set b back to track that separately
+            b_depth = a_depth
 
-        chunk_state = state[chunk[0]]
-        if chunk_state == Kind.NOTHING:
-            sys.stdout.buffer.write(buffer)
-            continue
+if __name__ == "__main__":
+    with open(file_a, "rb") as fa, open(file_b, "rb") as fb:
+        # fa.seek(0, SEEK_END)
+        # file_a_len = fa.tell()
+        # fa.seek(0)
 
-        code = "+" if chunk_state == Kind.ADD else "-"
+        # swap = False
+        # print(chunks_a)
+        # for i, _ in enumerate(chunks_a):
+        #     if swap:
+        #         color = 45
+        #         sys.stdout.buffer.write(b"\x1b\x5b45m")
+        #     else:
+        #         color = 44
+        #         sys.stdout.buffer.write(b"\x1b\x5b44m")
+        #     sys.stdout.flush()
+        #     write_chunk(chunks_a, i, fa, file_a_len, color=color)
+        #     swap = not swap
+        # sys.stdout.buffer.write(b"\x1b\x5b0m")
 
-        if not chunk[2]:
-            sys.stdout.write(f"{{{code}")
-            sys.stdout.flush()
-            sys.stdout.buffer.write(buffer)
-        else:
-            end = scan_for_end_of_tag(buffer)
-            sys.stdout.buffer.write(buffer[:end+1])
-            sys.stdout.write(f"{code}}}")
-            sys.stdout.flush()
-            sys.stdout.buffer.write(buffer[end+1:])
-
+        merge_trees(fa, fb, sys.stdout.buffer)
 
 # parser = etree.XMLParser()
 # print(parser._parser_context)
 # root_a = etree.parse("file_a.xml", parser)
 # print(root_a)
-
-exit(1)
