@@ -1,6 +1,10 @@
-from io import BytesIO
-import tree
 import unittest
+from io import (
+    BytesIO,
+)
+
+import tree
+
 
 class TestTreeMerge(unittest.TestCase):
     def test_reorder_sibling_one_is_subtree(self):
@@ -31,7 +35,6 @@ class TestTreeMerge(unittest.TestCase):
         out = BytesIO()
         tree.merge_trees(ta, tb, out)
 
-        print(out.getvalue())
         self.assertEqual(
             out.getvalue(),
             b'<root>{+<object><attr/></object>+}</root>'
@@ -43,8 +46,18 @@ class TestTreeMerge(unittest.TestCase):
         out = BytesIO()
         tree.merge_trees(ta, tb, out)
 
-        print(out.getvalue())
         self.assertEqual(
             out.getvalue(),
             b'<root>{-<object>-}{+<obj>+}<attr/>{-</object>-}{+</obj>+}</root>'
+        )
+
+    def test_add_parent_tag(self):
+        ta = BytesIO(b"<root><attr/></root>")
+        tb = BytesIO(b"<root><obj><attr/></obj></root>")
+        out = BytesIO()
+        tree.merge_trees(ta, tb, out)
+
+        self.assertEqual(
+            out.getvalue(),
+            b'<root>{+<obj>+}<attr/>{+</obj>+}</root>'
         )

@@ -1,6 +1,5 @@
 import enum
 import sys
-from pathlib import Path
 from enum import (
     Enum,
 )
@@ -13,15 +12,24 @@ from itertools import (
     tee,
     zip_longest,
 )
+from pathlib import (
+    Path,
+)
 from typing import (
     Dict,
 )
 from xml.parsers.expat import (
     ParserCreate,
 )
-from edist.sed import sed_string
 
-from constrained import constrained_alignment, constrained_edit_distance
+from edist.sed import (
+    sed_string,
+)
+
+from constrained import (
+    constrained_alignment,
+    constrained_edit_distance,
+)
 
 file_a = Path("file_a.xml")
 file_b = Path("file_b.xml")
@@ -169,8 +177,8 @@ def merge_trees(fa, fb, out_stream):
     state = 0
     # Track of deep we are in the tree. Used to match up the close chunks. May
     # not be necessary if we get sufficiently clever with the state field
-    a_depth = 0
-    b_depth = 0
+    a_stack = []
+    b_stack = []
     for (left, right) in alignment:
         # Match a single open tag
         if left >= 0 and right >= 0:
@@ -182,51 +190,52 @@ def merge_trees(fa, fb, out_stream):
             write_chunk_match(chunks_a, chunks_b, a_num, b_num, fa, fb, file_a_len, file_b_len, out_stream)
             a_num += 1
             b_num += 1
-            a_depth += 1
-            b_depth += 1
+            a_stack.append(0)
+            b_stack.append(0)
         elif left >= 0:
             if state != 1:
                 out_stream.write(b"\x7b-" if state == 0 else b"+\x7d\x7b-")
             state = 1
             write_chunk(chunks_a, a_num, fa, file_a_len, out_stream)
             a_num += 1
-            a_depth += 1
+            a_stack.append(1)
         elif right >= 0:
             if state != 2:
                 out_stream.write(b"\x7b+" if state == 0 else b"-\x7d\x7b+")
             state = 2
             write_chunk(chunks_b, b_num, fb, file_b_len, out_stream)
             b_num += 1
-            b_depth += 1
+            b_stack.append(1)
 
-        # Match some number of close tags, since closing one tag might then
-        # close the parent if we are the last child
-        # We start off closing trying to align the depth of the trees. If we
-        # are currently deeper in one tree, then we only close tags from that
-        # tree.
-        while a_num < len(chunks_a) and chunks_a[a_num][2] and a_depth > b_depth:
-            write_chunk(chunks_a, a_num, fa, file_a_len, out_stream)
-            a_num += 1
-            a_depth -= 1
-        while b_num < len(chunks_b) and chunks_b[b_num][2] and b_depth > a_depth:
-            write_chunk(chunks_b, b_num, fb, file_b_len, out_stream)
-            b_num += 1
-            b_depth -= 1
-        # Once the trees are aligned in depth, we try and close from both
-        if a_depth == b_depth:
-            # We can get away with only checking a_depth
-            while a_depth > 0 and chunks_a[a_num][2] and chunks_b[b_num][2]:
+        # Match the closing tags
+        while True:
+            # If we have a closing chunk on both streams, and both stacks have
+            # a matching consume queued up, we take it. Otherwise we check if
+            # either has an unbalanced consume and a closing chunk.
+            if a_num < len(chunks_a) and chunks_a[a_num][2] and b_num < len(chunks_b) and chunks_b[b_num][2] and a_stack[-1] == 0 and b_stack[-1] == 0:
                 if state != 0:
                     out_stream.write(b"-\x7d" if state == 1 else b"+\x7d")
                 state = 0
-                # @INCOMPLETE We'll likely need to do some diff here too
                 write_chunk_match(chunks_a, chunks_b, a_num, b_num, fa, fb, file_a_len, file_b_len, out_stream)
                 a_num += 1
                 b_num += 1
-                # We only keep track of a_depth in the loop since a and b are equal
-                a_depth -= 1
-            # now we set b back to track that separately
-            b_depth = a_depth
+                a_stack.pop()
+                b_stack.pop()
+            elif a_num < len(chunks_a) and chunks_a[a_num][2] and a_stack[-1] == 1:
+                if state != 1:
+                    out_stream.write(b"\x7b-" if state == 0 else b"+\x7d\x7b-")
+                state = 1
+                write_chunk(chunks_a, a_num, fa, file_a_len, out_stream)
+                a_num += 1
+                a_stack.pop()
+            elif b_num < len(chunks_b) and chunks_b[b_num][2] and b_stack[-1] == 1:
+                if state != 2:
+                    out_stream.write(b"\x7b+" if state == 0 else b"-\x7d\x7b+")
+                state = 2
+                write_chunk(chunks_b, b_num, fb, file_b_len, out_stream)
+                b_num += 1
+                b_stack.pop()
+            else: break # Stop when we didn't change the state
 
 if __name__ == "__main__":
     with open(file_a, "rb") as fa, open(file_b, "rb") as fb:
