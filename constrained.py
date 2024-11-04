@@ -86,7 +86,6 @@ def _constrained_edit_distance_core(
         return cost_n[ai+1][bi+1]
 
     for i in reversed(range(len(a_adj))):
-        print(f"Computing column {i}")
         for j in reversed(range(len(b_adj))):
             choices = [
                 edist.sed.sed(a_adj[i], b_adj[j], delta=seq_dist)

@@ -150,16 +150,6 @@ def merge_trees(fa, fb, out_stream):
     print(edit_cost)
     alignment = constrained_alignment(structure_a, structure_b, trace_matrix)
 
-    state_a = [ Kind.NOTHING for _ in chunks_a ]
-    state_b = [ Kind.NOTHING for _ in chunks_b ]
-
-    print(alignment)
-    for (left, right) in alignment:
-        if left >= 0:
-            state_a[left] = Kind.NOTHING if right >= 0 else Kind.REMOVE
-        if right >= 0:
-            state_b[right] = Kind.NOTHING if left >= 0 else Kind.ADD
-
     fb.seek(0, SEEK_END)
     file_b_len = fb.tell()
     fb.seek(0)

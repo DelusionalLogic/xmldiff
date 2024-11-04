@@ -61,3 +61,15 @@ class TestTreeMerge(unittest.TestCase):
             out.getvalue(),
             b'<root>{+<obj>+}<attr/>{+</obj>+}</root>'
         )
+
+    def test_add_whitespace(self):
+        ta = BytesIO(b"<root></root>")
+        tb = BytesIO(b"<root> </root>")
+        out = BytesIO()
+        tree.merge_trees(ta, tb, out)
+
+        # I don't think this is actually what I want
+        self.assertEqual(
+            out.getvalue(),
+            b"{-<root>-}{+<root> +}</root>"
+        )
