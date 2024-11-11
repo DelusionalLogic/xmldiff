@@ -73,3 +73,14 @@ class TestTreeMerge(unittest.TestCase):
             out.getvalue(),
             b"{-<root>-}{+<root> +}</root>"
         )
+
+    def test_match_subtree_parent_property_changed(self):
+        ta = BytesIO(b"<root><parent type=\"a\"><child/></parent></root>")
+        tb = BytesIO(b"<root><parent type=\"b\"><child/></parent></root>")
+        out = BytesIO()
+        tree.merge_trees(ta, tb, out)
+
+        self.assertEqual(
+            out.getvalue(),
+            b"<root>{-<parent type=\"a\">-}{+<parent type=\"b\">+}<child/></parent></root>"
+        )

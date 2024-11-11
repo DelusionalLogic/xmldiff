@@ -30,6 +30,7 @@ from constrained import (
     constrained_alignment,
     constrained_edit_distance,
 )
+from difflib import SequenceMatcher
 
 file_a = Path("file_a.xml")
 file_b = Path("file_b.xml")
@@ -130,16 +131,58 @@ def write_chunk_match(chunks_a, chunks_b, a_i, b_i, fa, fb, a_len, b_len, out_st
     a_buff = read_chunk(chunks_a, a_i, fa, a_len)
     b_buff = read_chunk(chunks_b, b_i, fb, b_len)
 
-    if a_buff == b_buff:
-        out_stream.write(b_buff)
-    else:
-        out_stream.write(b"\x7b-")
-        out_stream.write(a_buff)
-        out_stream.write(b"-\x7d\x7b+")
-        out_stream.write(b_buff)
-        out_stream.write(b"+\x7d")
+    # We could do something here to collapse diffs that butt up against each
+    # other, but I think this might be mer ergonomic
+    seq = SequenceMatcher(None, a_buff, b_buff)
+    for (op, i1, i2, j1, j2) in seq.get_opcodes():
+        if op == 'equal':
+            out_stream.write(a_buff[i1:i2])
+        elif op == 'insert':
+            out_stream.write(b"\x7b+")
+            out_stream.write(b_buff[j1:j2])
+            out_stream.write(b"+\x7d")
+        elif op == 'delete':
+            out_stream.write(b"\x7b-")
+            out_stream.write(a_buff[i1:i2])
+            out_stream.write(b"-\x7d")
+        elif op == 'replace':
+            out_stream.write(b"\x7b-")
+            out_stream.write(a_buff[i1:i2])
+            out_stream.write(b"-\x7d")
+            out_stream.write(b"\x7b+")
+            out_stream.write(b_buff[j1:j2])
+            out_stream.write(b"+\x7d")
+        else: raise Exception(op)
 
     out_stream.flush()
+
+class Take(Enum):
+    LEFT = enum.auto()
+    RIGHT = enum.auto()
+    BOTH = enum.auto()
+
+class Peekable:
+    def __init__(self, inner):
+        self.inner = inner
+        self.slot = None
+        self.loaded = False
+
+    def peek(self):
+        if not self.loaded:
+            self.loaded = True
+            self.slot = next(self.inner)
+
+        return self.slot
+
+
+    def __next__(self):
+        if not self.loaded:
+            self.peek()
+
+        cur = self.slot
+        self.loaded = False
+        self.slot = None
+        return cur
 
 def merge_trees(fa, fb, out_stream):
     (nodes_a, chunks_a, structure_a) = read_file(fa)
@@ -158,74 +201,89 @@ def merge_trees(fa, fb, out_stream):
     file_a_len = fa.tell()
     fa.seek(0)
 
-    sys.stdout.flush()
-    # Two variabled to keep track of where in each file we are. We consume
-    # a chunk from the file when we output it in the result
-    a_num = 0
-    b_num = 0
-    # Keep track of if we are adding, deleting, or matching currently
-    state = 0
-    # Track of deep we are in the tree. Used to match up the close chunks. May
-    # not be necessary if we get sufficiently clever with the state field
+    take_list = []
+    # Track if the node was changed or matched so that we know to wait with
+    # consuming it
+    # @Speed would it be faster to precompute this?
     a_stack = []
     b_stack = []
+    ait = Peekable(iter(chunks_a))
+    bit = Peekable(iter(chunks_b))
     for (left, right) in alignment:
         # Match a single open tag
         if left >= 0 and right >= 0:
-            if state != 0:
-                out_stream.write(b"-\x7d" if state == 1 else b"+\x7d")
-            state = 0
-            assert not chunks_a[a_num][2] and not chunks_b[b_num][2]
-            # @INCOMPLETE: We should do some deeper diff here.
-            write_chunk_match(chunks_a, chunks_b, a_num, b_num, fa, fb, file_a_len, file_b_len, out_stream)
-            a_num += 1
-            b_num += 1
+            next(ait)
+            next(bit)
             a_stack.append(0)
             b_stack.append(0)
+            take_list.append(Take.BOTH)
         elif left >= 0:
-            if state != 1:
-                out_stream.write(b"\x7b-" if state == 0 else b"+\x7d\x7b-")
-            state = 1
-            write_chunk(chunks_a, a_num, fa, file_a_len, out_stream)
-            a_num += 1
+            next(ait)
             a_stack.append(1)
+            take_list.append(Take.LEFT)
         elif right >= 0:
-            if state != 2:
-                out_stream.write(b"\x7b+" if state == 0 else b"-\x7d\x7b+")
-            state = 2
-            write_chunk(chunks_b, b_num, fb, file_b_len, out_stream)
-            b_num += 1
+            next(bit)
             b_stack.append(1)
+            take_list.append(Take.RIGHT)
 
         # Match the closing tags
         while True:
             # If we have a closing chunk on both streams, and both stacks have
             # a matching consume queued up, we take it. Otherwise we check if
             # either has an unbalanced consume and a closing chunk.
-            if a_num < len(chunks_a) and chunks_a[a_num][2] and b_num < len(chunks_b) and chunks_b[b_num][2] and a_stack[-1] == 0 and b_stack[-1] == 0:
-                if state != 0:
-                    out_stream.write(b"-\x7d" if state == 1 else b"+\x7d")
-                state = 0
-                write_chunk_match(chunks_a, chunks_b, a_num, b_num, fa, fb, file_a_len, file_b_len, out_stream)
-                a_num += 1
-                b_num += 1
+            try:
+                a_next = ait.peek()
+            except StopIteration:
+                a_next = None
+
+            try:
+                b_next = bit.peek()
+            except StopIteration:
+                b_next = None
+
+            if a_next is not None and a_next[2] and b_next is not None and b_next[2] and a_stack[-1] == 0 and b_stack[-1] == 0:
+                next(ait)
+                next(bit)
                 a_stack.pop()
                 b_stack.pop()
-            elif a_num < len(chunks_a) and chunks_a[a_num][2] and a_stack[-1] == 1:
-                if state != 1:
-                    out_stream.write(b"\x7b-" if state == 0 else b"+\x7d\x7b-")
-                state = 1
-                write_chunk(chunks_a, a_num, fa, file_a_len, out_stream)
-                a_num += 1
+                take_list.append(Take.BOTH)
+            elif a_next is not None and a_next[2] and a_stack[-1] == 1:
+                next(ait)
                 a_stack.pop()
-            elif b_num < len(chunks_b) and chunks_b[b_num][2] and b_stack[-1] == 1:
-                if state != 2:
-                    out_stream.write(b"\x7b+" if state == 0 else b"-\x7d\x7b+")
-                state = 2
-                write_chunk(chunks_b, b_num, fb, file_b_len, out_stream)
-                b_num += 1
+                take_list.append(Take.LEFT)
+            elif b_next is not None and b_next[2] and b_stack[-1] == 1:
+                next(bit)
                 b_stack.pop()
+                take_list.append(Take.RIGHT)
             else: break # Stop when we didn't change the state
+
+
+    # Keep track of if we are adding, deleting, or matching currently
+    state = 0
+    sys.stdout.flush()
+    a_num = 0
+    b_num = 0
+    for action in take_list:
+        if action == Take.BOTH:
+            if state != 0:
+                out_stream.write(b"-\x7d" if state == 1 else b"+\x7d")
+            state = 0
+            write_chunk_match(chunks_a, chunks_b, a_num, b_num, fa, fb, file_a_len, file_b_len, out_stream)
+            a_num += 1
+            b_num += 1
+        elif action == Take.LEFT:
+            if state != 1:
+                out_stream.write(b"\x7b-" if state == 0 else b"+\x7d\x7b-")
+            state = 1
+            write_chunk(chunks_a, a_num, fa, file_a_len, out_stream)
+            a_num += 1
+        elif action == Take.RIGHT:
+            if state != 2:
+                out_stream.write(b"\x7b+" if state == 0 else b"-\x7d\x7b+")
+            state = 2
+            write_chunk(chunks_b, b_num, fb, file_b_len, out_stream)
+            b_num += 1
+        else: raise Exception()
 
 if __name__ == "__main__":
     with open(file_a, "rb") as fa, open(file_b, "rb") as fb:
