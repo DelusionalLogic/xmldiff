@@ -173,37 +173,37 @@ def merge_trees(fa, fb, out_stream: OutputState):
     file_a_len = fa.tell()
     fa.seek(0)
 
+    a_to_chunks = []
+    for i, (_, _, close) in enumerate(chunks_a):
+        if not close:
+            a_to_chunks.append(i)
+
+    b_to_chunks = []
+    for i, (_, _, close) in enumerate(chunks_b):
+        if not close:
+            b_to_chunks.append(i)
+
     cost = np.zeros((len(nodes_a) + 1, len(nodes_b) + 1))
-    for i, n in enumerate(nodes_a):
-        cost[i, 0] = len(n.name)
+    for i, (_, cid) in enumerate(zip(nodes_a, a_to_chunks)):
+        # @PERF: We don't actually really need the chunks themselves here,
+        # merely their length which we can calculate without doing any io. This
+        # is easier with the current interface though.
+        a_chunk = read_chunk(chunks_a, cid, fa, file_a_len)
+        cost[i, 0] = len(a_chunk)
 
-    for i, n in enumerate(nodes_b):
-        cost[0, i] = len(n.name)
+    for i, (_, cid) in enumerate(zip(nodes_b, b_to_chunks)):
+        b_chunk = read_chunk(chunks_b, cid, fb, file_b_len)
+        cost[0, i] = len(b_chunk)
 
-    # @CLEANUP @PERF: This is a bad loop, we're doing some weird random access
-    # in the chunks array, even though they're ordered in such a way that we
-    # shouldn't have to.
-    # It should be possible to just walk through the arrays while skipping
-    # everything that looks like a close tag.
-    for ai, a in enumerate(nodes_a):
-        for bi, b in enumerate(nodes_b):
+    for ai, (a, a_cid) in enumerate(zip(nodes_a, a_to_chunks)):
+        a_chunk = read_chunk(chunks_a, a_cid, fa, file_a_len)
+
+        for bi, (b, b_cid) in enumerate(zip(nodes_b, b_to_chunks)):
             cost_value = 0
 
+            b_chunk = read_chunk(chunks_b, b_cid, fb, file_b_len)
+
             if a != b:
-                for i, (nid, _, _) in enumerate(chunks_a):
-                    if nid == ai:
-                        a_chunk = read_chunk(chunks_a, i, fa, file_a_len)
-                        break
-                else:
-                    raise Exception()
-
-                for i, (nid, _, _) in enumerate(chunks_b):
-                    if nid == bi:
-                        b_chunk = read_chunk(chunks_b, i, fb, file_b_len)
-                        break
-                else:
-                    raise Exception()
-
                 cost_value = sed_string(a_chunk.decode(), b_chunk.decode())
 
             cost[ai + 1, bi + 1] = cost_value
