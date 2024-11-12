@@ -119,6 +119,9 @@ def write_chunk_match(
 
     seq = SequenceMatcher(None, a_buff, b_buff, False)
     for op, i1, i2, j1, j2 in seq.get_opcodes():
+        if i1 != 0 and j1 != 0:
+            out_stream.output(b" ", 0)
+
         if op == "equal":
             out_stream.output(b" ".join(a_buff[i1:i2]), 0)
         elif op == "insert":
@@ -307,10 +310,10 @@ def merge_trees(fa, fb, out_stream: OutputState):
 
 if __name__ == "__main__":
     file_a = Path(
-        "/Users/delusional/axiom/5.12.3/Projects/CM_Reference_Data_Calc_Inputs/Branches/5_12_3/Aggregation/Ref_Reporting_Entity.xml"
+        "/Users/delusional/axiom/5.12.3/Projects/CM_Reference_Data_Calc_Inputs/Branches/5_12_3/DataSource/Ref_Reporting_Entity_Sample.xml"
     )
     file_b = Path(
-        "/Users/delusional/axiom/5.12.4/Projects/CM_Reference_Data_Calc_Inputs/Branches/5_12_4/Aggregation/Ref_Reporting_Entity.xml"
+        "/Users/delusional/axiom/5.12.4/Projects/CM_Reference_Data_Calc_Inputs/Branches/5_12_4/DataSource/Ref_Reporting_Entity_Sample.xml"
     )
     out = OutputState(sys.stdout.buffer)
     with open(file_a, "rb") as fa, open(file_b, "rb") as fb:
