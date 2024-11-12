@@ -4,15 +4,7 @@ import sys
 from enum import (
     Enum,
 )
-from io import (
-    SEEK_END,
-    SEEK_SET,
-)
-from itertools import (
-    islice,
-    tee,
-    zip_longest,
-)
+import io
 from pathlib import (
     Path,
 )
@@ -66,10 +58,6 @@ class OutputState:
         self._switch_state(state)
         self.stream.write(data)
 
-
-file_a = Path("/Users/delusional/axiom/5.12.3/Projects/CM_Reference_Data_Calc_Inputs/Branches/5_12_3/Aggregation/Ref_Reporting_Entity.xml")
-file_b = Path("/Users/delusional/axiom/5.12.4/Projects/CM_Reference_Data_Calc_Inputs/Branches/5_12_4/Aggregation/Ref_Reporting_Entity.xml")
-
 class Node:
     def __init__(self, name: str, location: int):
         self.name = name
@@ -115,7 +103,7 @@ def read_chunk(chunks, index, file, file_len):
     if nchunk is not None:
         clen = nchunk[1] - chunk[1]
 
-    file.seek(chunk[1], SEEK_SET)
+    file.seek(chunk[1], io.SEEK_SET)
     buffer = file.read(clen)
     return buffer
 
@@ -123,24 +111,22 @@ def write_chunk(chunks, index, file, file_len, out_stream: OutputState, state):
     buffer = read_chunk(chunks, index, file, file_len)
     out_stream.output(buffer, state)
 
+# @COMPLETENESS: You might want to be able to configure the whitespace somehow
 def write_chunk_match(chunks_a, chunks_b, a_i, b_i, fa, fb, a_len, b_len, out_stream: OutputState):
-    a_buff = read_chunk(chunks_a, a_i, fa, a_len)
-    b_buff = read_chunk(chunks_b, b_i, fb, b_len)
+    a_buff = read_chunk(chunks_a, a_i, fa, a_len).split(b" ")
+    b_buff = read_chunk(chunks_b, b_i, fb, b_len).split(b" ")
 
-    # @UI: Right now, this is overly aggressive in trying to merge the two
-    # strings, creating a ton of noisy changes. I'd rather it didn't, and just
-    # replaced a whole attribute at a time
-    seq = SequenceMatcher(None, a_buff, b_buff)
+    seq = SequenceMatcher(None, a_buff, b_buff, False)
     for (op, i1, i2, j1, j2) in seq.get_opcodes():
         if op == 'equal':
-            out_stream.output(a_buff[i1:i2], 0)
+            out_stream.output(b" ".join(a_buff[i1:i2]), 0)
         elif op == 'insert':
-            out_stream.output(b_buff[j1:j2], 2)
+            out_stream.output(b" ".join(b_buff[j1:j2]), 2)
         elif op == 'delete':
-            out_stream.output(a_buff[i1:i2], 1)
+            out_stream.output(b" ".join(a_buff[i1:i2]), 1)
         elif op == 'replace':
-            out_stream.output(a_buff[i1:i2], 1)
-            out_stream.output(b_buff[j1:j2], 2)
+            out_stream.output(b" ".join(a_buff[i1:i2]), 1)
+            out_stream.output(b" ".join(b_buff[j1:j2]), 2)
         else: raise Exception(op)
 
 class Take(Enum):
@@ -175,11 +161,11 @@ def merge_trees(fa, fb, out_stream: OutputState):
     (nodes_a, chunks_a, structure_a) = read_file(fa)
     (nodes_b, chunks_b, structure_b) = read_file(fb)
 
-    fb.seek(0, SEEK_END)
+    fb.seek(0, io.SEEK_END)
     file_b_len = fb.tell()
     fb.seek(0)
 
-    fa.seek(0, SEEK_END)
+    fa.seek(0, io.SEEK_END)
     file_a_len = fa.tell()
     fa.seek(0)
 
@@ -229,6 +215,8 @@ def merge_trees(fa, fb, out_stream: OutputState):
     # @PERF would it be faster to precompute this?
     a_stack = []
     b_stack = []
+    # @CLEANUP The obly part of this we are using open/close flag. Could we
+    # separate that out to slim this down?
     ait = Peekable(iter(chunks_a))
     bit = Peekable(iter(chunks_b))
     for (left, right) in alignment:
@@ -296,6 +284,8 @@ def merge_trees(fa, fb, out_stream: OutputState):
         else: raise Exception()
 
 if __name__ == "__main__":
+    file_a = Path("/Users/delusional/axiom/5.12.3/Projects/CM_Reference_Data_Calc_Inputs/Branches/5_12_3/Aggregation/Ref_Reporting_Entity.xml")
+    file_b = Path("/Users/delusional/axiom/5.12.4/Projects/CM_Reference_Data_Calc_Inputs/Branches/5_12_4/Aggregation/Ref_Reporting_Entity.xml")
     out = OutputState(sys.stdout.buffer)
     with open(file_a, "rb") as fa, open(file_b, "rb") as fb:
         merge_trees(fa, fb, out)
