@@ -22,18 +22,6 @@ a_adj: List[List[int]] = [[1, 3], [2], [], []]
 b: List[int] = [0, 1, 3, 2, 4]
 b_adj: List[List[int]] = [[1, 2], [], [3, 4], [], []]
 
-def cost(ai: Optional[int], bi: Optional[int], data: Tuple[List[int], List[int]]) -> int:
-    if ai is None:
-        return 1
-    if bi is None:
-        return 1
-
-    (a, b) = data
-    if a[ai] == b[bi]:
-        return 0
-
-    return 1
-
 class Cmd(Enum):
     UNSET = 0
     MATCH = 1
@@ -56,8 +44,7 @@ T = TypeVar("T")
 def _constrained_edit_distance_core(
     a_adj: List[List[int]],
     b_adj: List[List[int]],
-    cost: Callable[[Optional[int], Optional[int], T], int],
-    data: T,
+    cost: np.ndarray,
     cost_n: np.ndarray,
     cost_f: np.ndarray,
     trace_n: TraceMatrix,
@@ -69,12 +56,12 @@ def _constrained_edit_distance_core(
         cost_f[i+1][0] = 0
         for c in a_adj[i]:
             cost_f[i+1][0] += cost_n[c+1][0]
-        cost_n[i+1][0] = cost_f[i+1][0] + cost(i, None, data)
+        cost_n[i+1][0] = cost_f[i+1][0] + cost[i+1, 0]
     for j in reversed(range(len(b_adj))):
         cost_f[0][j+1] = 0
         for c in b_adj[j]:
             cost_f[0][j+1] += cost_n[0][c+1]
-        cost_n[0][j+1] = cost_f[0][j+1] + cost(None, j, data)
+        cost_n[0][j+1] = cost_f[0][j+1] + cost[0, j+1]
 
     def seq_dist(ai: Optional[int], bi: Optional[int]) -> int:
         if ai is None:
@@ -112,7 +99,7 @@ def _constrained_edit_distance_core(
             trace_f[i+1][j+1] = f_traces[f_min]
 
             choices = [
-                cost_f[i+1][j+1] + cost(i, j, data)
+                cost_f[i+1][j+1] + cost[i+1, j+1]
             ]
             n_traces : List[Tuple[Cmd, Optional[int]]] = [
                 (Cmd.MATCH, None)
@@ -137,8 +124,7 @@ def _constrained_edit_distance_core(
 def constrained_edit_distance(
     a_adj: List[List[int]],
     b_adj: List[List[int]],
-    cost: Callable[[Optional[int], Optional[int], T], int],
-    data: T = None,
+    cost: np.ndarray
 ) -> Tuple[int, Optional[Tuple[TraceMatrix, TraceMatrix]]]:
     if len(a_adj) == 0 and len(b_adj) == 0:
         return 0, None
@@ -151,7 +137,7 @@ def constrained_edit_distance(
     print(cost_n.shape)
     print(cost_f.shape)
 
-    _constrained_edit_distance_core(a_adj, b_adj, cost, data, cost_n, cost_f, trace_n, trace_f)
+    _constrained_edit_distance_core(a_adj, b_adj, cost, cost_n, cost_f, trace_n, trace_f)
     return cost_n[1][1].item(), (trace_f, trace_n)
 
 def constrained_alignment(

@@ -1,4 +1,5 @@
 import enum
+import numpy as np
 import sys
 from enum import (
     Enum,
@@ -16,6 +17,7 @@ from pathlib import (
     Path,
 )
 from typing import (
+    BinaryIO,
     Dict,
 )
 from xml.parsers.expat import (
@@ -32,8 +34,41 @@ from constrained import (
 )
 from difflib import SequenceMatcher
 
-file_a = Path("file_a.xml")
-file_b = Path("file_b.xml")
+class OutputState:
+    state_color = [b"0", b"31", b"32"]
+
+    def __init__(self, stream: BinaryIO):
+        self.stream = stream
+        self.state = 0
+        self.color = "0"
+
+    def _switch_state(self, new_state: int):
+        if self.state == new_state:
+            return
+
+        state_chars = [b" ", b"-", b"+"]
+
+        if self.state != 0:
+            self.stream.write(state_chars[self.state])
+            self.stream.write(b"\x7d")
+
+        self.stream.write(b"\033\133")
+        self.stream.write(self.state_color[new_state])
+        self.stream.write(b"m")
+
+        if new_state != 0:
+            self.stream.write(b"\x7b")
+            self.stream.write(state_chars[new_state])
+
+        self.state = new_state
+
+    def output(self, data: bytes, state: int):
+        self._switch_state(state)
+        self.stream.write(data)
+
+
+file_a = Path("/Users/delusional/axiom/5.12.3/Projects/CM_Reference_Data_Calc_Inputs/Branches/5_12_3/Aggregation/Ref_Reporting_Entity.xml")
+file_b = Path("/Users/delusional/axiom/5.12.4/Projects/CM_Reference_Data_Calc_Inputs/Branches/5_12_4/Aggregation/Ref_Reporting_Entity.xml")
 
 class Node:
     def __init__(self, name: str, location: int):
@@ -65,46 +100,12 @@ def read_file(f):
         pos = xmlparser.CurrentByteIndex
         chunks.append((nid, pos, True))
 
-    xmlparser.ordered_attributes = True
+    xmlparser.ordered_attributes = False
     xmlparser.StartElementHandler = start_element
     xmlparser.EndElementHandler = end_element
 
     xmlparser.ParseFile(f)
     return (nodes, chunks, structure)
-
-class Kind(Enum):
-    NOTHING = enum.auto()
-    ADD = enum.auto()
-    REMOVE = enum.auto()
-
-def get_next(some_iterable, window=1):
-    items, nexts = tee(some_iterable, 2)
-    nexts = islice(nexts, window, None)
-    return zip_longest(items, nexts)
-
-def scan_for_end_of_tag(buffer):
-    # @HACK hacks on top of hacks
-    if buffer[0] != b'<'[0]:
-        return 0
-    pos = 0
-    # @HACK This is probably not very reliable. I have a patch pending in
-    # python to expose the expat field we need, but this will do for now.
-    while buffer[pos] != b'>'[0]:
-        pos += 1
-
-    return pos
-
-def cost(ai, bi, data):
-    (a, b) = data
-    if ai is None:
-        return len(b[bi].name)
-    if bi is None:
-        return len(a[ai].name)
-
-    if a[ai] == b[bi]:
-        return 0
-
-    return sed_string(a[ai].name, b[bi].name)
 
 def read_chunk(chunks, index, file, file_len):
     chunk = chunks[index]
@@ -118,43 +119,29 @@ def read_chunk(chunks, index, file, file_len):
     buffer = file.read(clen)
     return buffer
 
-def write_chunk(chunks, index, file, file_len, out_stream=sys.stdout.buffer, color=None):
+def write_chunk(chunks, index, file, file_len, out_stream: OutputState, state):
     buffer = read_chunk(chunks, index, file, file_len)
+    out_stream.output(buffer, state)
 
-    if color is not None:
-        buffer = buffer.replace(b"\n", f"\\n\x1b\x5b0m\n\x1b\x5b{color}m".encode())
-        buffer = buffer.replace(b"\t", f"    ".encode())
-    out_stream.write(buffer)
-    out_stream.flush()
-
-def write_chunk_match(chunks_a, chunks_b, a_i, b_i, fa, fb, a_len, b_len, out_stream=sys.stdout.buffer):
+def write_chunk_match(chunks_a, chunks_b, a_i, b_i, fa, fb, a_len, b_len, out_stream: OutputState):
     a_buff = read_chunk(chunks_a, a_i, fa, a_len)
     b_buff = read_chunk(chunks_b, b_i, fb, b_len)
 
-    # We could do something here to collapse diffs that butt up against each
-    # other, but I think this might be mer ergonomic
+    # @UI: Right now, this is overly aggressive in trying to merge the two
+    # strings, creating a ton of noisy changes. I'd rather it didn't, and just
+    # replaced a whole attribute at a time
     seq = SequenceMatcher(None, a_buff, b_buff)
     for (op, i1, i2, j1, j2) in seq.get_opcodes():
         if op == 'equal':
-            out_stream.write(a_buff[i1:i2])
+            out_stream.output(a_buff[i1:i2], 0)
         elif op == 'insert':
-            out_stream.write(b"\x7b+")
-            out_stream.write(b_buff[j1:j2])
-            out_stream.write(b"+\x7d")
+            out_stream.output(b_buff[j1:j2], 2)
         elif op == 'delete':
-            out_stream.write(b"\x7b-")
-            out_stream.write(a_buff[i1:i2])
-            out_stream.write(b"-\x7d")
+            out_stream.output(a_buff[i1:i2], 1)
         elif op == 'replace':
-            out_stream.write(b"\x7b-")
-            out_stream.write(a_buff[i1:i2])
-            out_stream.write(b"-\x7d")
-            out_stream.write(b"\x7b+")
-            out_stream.write(b_buff[j1:j2])
-            out_stream.write(b"+\x7d")
+            out_stream.output(a_buff[i1:i2], 1)
+            out_stream.output(b_buff[j1:j2], 2)
         else: raise Exception(op)
-
-    out_stream.flush()
 
 class Take(Enum):
     LEFT = enum.auto()
@@ -184,14 +171,9 @@ class Peekable:
         self.slot = None
         return cur
 
-def merge_trees(fa, fb, out_stream):
+def merge_trees(fa, fb, out_stream: OutputState):
     (nodes_a, chunks_a, structure_a) = read_file(fa)
     (nodes_b, chunks_b, structure_b) = read_file(fb)
-
-    edit_cost, trace_matrix = constrained_edit_distance(structure_a, structure_b, cost, (nodes_a, nodes_b))
-    assert(trace_matrix is not None)
-    print(edit_cost)
-    alignment = constrained_alignment(structure_a, structure_b, trace_matrix)
 
     fb.seek(0, SEEK_END)
     file_b_len = fb.tell()
@@ -201,10 +183,50 @@ def merge_trees(fa, fb, out_stream):
     file_a_len = fa.tell()
     fa.seek(0)
 
+    cost = np.zeros((len(nodes_a) + 1, len(nodes_b) + 1))
+    for i, n in enumerate(nodes_a):
+        cost[i, 0] = len(n.name)
+
+    for i, n in enumerate(nodes_b):
+        cost[0, i] = len(n.name)
+
+    # @CLEANUP @PERF: This is a bad loop, we're doing some weird random access
+    # in the chunks array, even though they're ordered in such a way that we
+    # shouldn't have to.
+    # It should be possible to just walk through the arrays while skipping
+    # everything that looks like a close tag.
+    for ai, a in enumerate(nodes_a):
+        for bi, b in enumerate(nodes_b):
+            cost_value = 0
+
+            if a != b:
+                for (i, (nid, _, _)) in enumerate(chunks_a):
+                    if nid == ai:
+                        a_chunk = read_chunk(chunks_a, i, fa, file_a_len)
+                        break
+                else:
+                    raise Exception()
+
+                for (i, (nid, _, _)) in enumerate(chunks_b):
+                    if nid == bi:
+                        b_chunk = read_chunk(chunks_b, i, fb, file_b_len)
+                        break
+                else:
+                    raise Exception()
+
+                cost_value = sed_string(a_chunk.decode(), b_chunk.decode())
+
+            cost[ai+1, bi+1] = cost_value
+
+
+    _, trace_matrix = constrained_edit_distance(structure_a, structure_b, cost)
+    assert(trace_matrix is not None)
+    alignment = constrained_alignment(structure_a, structure_b, trace_matrix)
+
     take_list = []
     # Track if the node was changed or matched so that we know to wait with
     # consuming it
-    # @Speed would it be faster to precompute this?
+    # @PERF would it be faster to precompute this?
     a_stack = []
     b_stack = []
     ait = Peekable(iter(chunks_a))
@@ -258,56 +280,22 @@ def merge_trees(fa, fb, out_stream):
             else: break # Stop when we didn't change the state
 
 
-    # Keep track of if we are adding, deleting, or matching currently
-    state = 0
-    sys.stdout.flush()
     a_num = 0
     b_num = 0
     for action in take_list:
         if action == Take.BOTH:
-            if state != 0:
-                out_stream.write(b"-\x7d" if state == 1 else b"+\x7d")
-            state = 0
             write_chunk_match(chunks_a, chunks_b, a_num, b_num, fa, fb, file_a_len, file_b_len, out_stream)
             a_num += 1
             b_num += 1
         elif action == Take.LEFT:
-            if state != 1:
-                out_stream.write(b"\x7b-" if state == 0 else b"+\x7d\x7b-")
-            state = 1
-            write_chunk(chunks_a, a_num, fa, file_a_len, out_stream)
+            write_chunk(chunks_a, a_num, fa, file_a_len, out_stream, 1)
             a_num += 1
         elif action == Take.RIGHT:
-            if state != 2:
-                out_stream.write(b"\x7b+" if state == 0 else b"-\x7d\x7b+")
-            state = 2
-            write_chunk(chunks_b, b_num, fb, file_b_len, out_stream)
+            write_chunk(chunks_b, b_num, fb, file_b_len, out_stream, 2)
             b_num += 1
         else: raise Exception()
 
 if __name__ == "__main__":
+    out = OutputState(sys.stdout.buffer)
     with open(file_a, "rb") as fa, open(file_b, "rb") as fb:
-        # fa.seek(0, SEEK_END)
-        # file_a_len = fa.tell()
-        # fa.seek(0)
-
-        # swap = False
-        # print(chunks_a)
-        # for i, _ in enumerate(chunks_a):
-        #     if swap:
-        #         color = 45
-        #         sys.stdout.buffer.write(b"\x1b\x5b45m")
-        #     else:
-        #         color = 44
-        #         sys.stdout.buffer.write(b"\x1b\x5b44m")
-        #     sys.stdout.flush()
-        #     write_chunk(chunks_a, i, fa, file_a_len, color=color)
-        #     swap = not swap
-        # sys.stdout.buffer.write(b"\x1b\x5b0m")
-
-        merge_trees(fa, fb, sys.stdout.buffer)
-
-# parser = etree.XMLParser()
-# print(parser._parser_context)
-# root_a = etree.parse("file_a.xml", parser)
-# print(root_a)
+        merge_trees(fa, fb, out)
