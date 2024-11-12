@@ -1,30 +1,23 @@
 import enum
-import numpy as np
-import sys
-from enum import (
-    Enum,
-)
 import io
-from pathlib import (
-    Path,
-)
+import sys
+from difflib import SequenceMatcher
+from enum import Enum
+from pathlib import Path
 from typing import (
     BinaryIO,
     Dict,
 )
-from xml.parsers.expat import (
-    ParserCreate,
-)
+from xml.parsers.expat import ParserCreate
 
-from edist.sed import (
-    sed_string,
-)
+import numpy as np
+from edist.sed import sed_string
 
 from constrained import (
     constrained_alignment,
     constrained_edit_distance,
 )
-from difflib import SequenceMatcher
+
 
 class OutputState:
     state_color = [b"0", b"31", b"32"]
@@ -58,6 +51,7 @@ class OutputState:
         self._switch_state(state)
         self.stream.write(data)
 
+
 class Node:
     def __init__(self, name: str, location: int):
         self.name = name
@@ -66,6 +60,7 @@ class Node:
     def __repr__(self):
         return f"{self.name}:{self.location}"
 
+
 def read_file(f):
     nodes = []
     chunks = []
@@ -73,6 +68,7 @@ def read_file(f):
 
     chunk_stack = []
     xmlparser = ParserCreate()
+
     def start_element(name: str, _: Dict[str, str]):
         nid = len(nodes)
         structure.append([])
@@ -95,9 +91,10 @@ def read_file(f):
     xmlparser.ParseFile(f)
     return (nodes, chunks, structure)
 
+
 def read_chunk(chunks, index, file, file_len):
     chunk = chunks[index]
-    nchunk = chunks[index+1] if index+1 < len(chunks) else None
+    nchunk = chunks[index + 1] if index + 1 < len(chunks) else None
 
     clen = file_len - chunk[1]
     if nchunk is not None:
@@ -107,32 +104,39 @@ def read_chunk(chunks, index, file, file_len):
     buffer = file.read(clen)
     return buffer
 
+
 def write_chunk(chunks, index, file, file_len, out_stream: OutputState, state):
     buffer = read_chunk(chunks, index, file, file_len)
     out_stream.output(buffer, state)
 
+
 # @COMPLETENESS: You might want to be able to configure the whitespace somehow
-def write_chunk_match(chunks_a, chunks_b, a_i, b_i, fa, fb, a_len, b_len, out_stream: OutputState):
+def write_chunk_match(
+    chunks_a, chunks_b, a_i, b_i, fa, fb, a_len, b_len, out_stream: OutputState
+):
     a_buff = read_chunk(chunks_a, a_i, fa, a_len).split(b" ")
     b_buff = read_chunk(chunks_b, b_i, fb, b_len).split(b" ")
 
     seq = SequenceMatcher(None, a_buff, b_buff, False)
-    for (op, i1, i2, j1, j2) in seq.get_opcodes():
-        if op == 'equal':
+    for op, i1, i2, j1, j2 in seq.get_opcodes():
+        if op == "equal":
             out_stream.output(b" ".join(a_buff[i1:i2]), 0)
-        elif op == 'insert':
+        elif op == "insert":
             out_stream.output(b" ".join(b_buff[j1:j2]), 2)
-        elif op == 'delete':
+        elif op == "delete":
             out_stream.output(b" ".join(a_buff[i1:i2]), 1)
-        elif op == 'replace':
+        elif op == "replace":
             out_stream.output(b" ".join(a_buff[i1:i2]), 1)
             out_stream.output(b" ".join(b_buff[j1:j2]), 2)
-        else: raise Exception(op)
+        else:
+            raise Exception(op)
+
 
 class Take(Enum):
     LEFT = enum.auto()
     RIGHT = enum.auto()
     BOTH = enum.auto()
+
 
 class Peekable:
     def __init__(self, inner):
@@ -147,7 +151,6 @@ class Peekable:
 
         return self.slot
 
-
     def __next__(self):
         if not self.loaded:
             self.peek()
@@ -156,6 +159,7 @@ class Peekable:
         self.loaded = False
         self.slot = None
         return cur
+
 
 def merge_trees(fa, fb, out_stream: OutputState):
     (nodes_a, chunks_a, structure_a) = read_file(fa)
@@ -186,14 +190,14 @@ def merge_trees(fa, fb, out_stream: OutputState):
             cost_value = 0
 
             if a != b:
-                for (i, (nid, _, _)) in enumerate(chunks_a):
+                for i, (nid, _, _) in enumerate(chunks_a):
                     if nid == ai:
                         a_chunk = read_chunk(chunks_a, i, fa, file_a_len)
                         break
                 else:
                     raise Exception()
 
-                for (i, (nid, _, _)) in enumerate(chunks_b):
+                for i, (nid, _, _) in enumerate(chunks_b):
                     if nid == bi:
                         b_chunk = read_chunk(chunks_b, i, fb, file_b_len)
                         break
@@ -202,11 +206,10 @@ def merge_trees(fa, fb, out_stream: OutputState):
 
                 cost_value = sed_string(a_chunk.decode(), b_chunk.decode())
 
-            cost[ai+1, bi+1] = cost_value
-
+            cost[ai + 1, bi + 1] = cost_value
 
     _, trace_matrix = constrained_edit_distance(structure_a, structure_b, cost)
-    assert(trace_matrix is not None)
+    assert trace_matrix is not None
     alignment = constrained_alignment(structure_a, structure_b, trace_matrix)
 
     take_list = []
@@ -219,7 +222,7 @@ def merge_trees(fa, fb, out_stream: OutputState):
     # separate that out to slim this down?
     ait = Peekable(iter(chunks_a))
     bit = Peekable(iter(chunks_b))
-    for (left, right) in alignment:
+    for left, right in alignment:
         # Match a single open tag
         if left >= 0 and right >= 0:
             next(ait)
@@ -251,7 +254,14 @@ def merge_trees(fa, fb, out_stream: OutputState):
             except StopIteration:
                 b_next = None
 
-            if a_next is not None and a_next[2] and b_next is not None and b_next[2] and a_stack[-1] == 0 and b_stack[-1] == 0:
+            if (
+                a_next is not None
+                and a_next[2]
+                and b_next is not None
+                and b_next[2]
+                and a_stack[-1] == 0
+                and b_stack[-1] == 0
+            ):
                 next(ait)
                 next(bit)
                 a_stack.pop()
@@ -265,14 +275,24 @@ def merge_trees(fa, fb, out_stream: OutputState):
                 next(bit)
                 b_stack.pop()
                 take_list.append(Take.RIGHT)
-            else: break # Stop when we didn't change the state
-
+            else:
+                break  # Stop when we didn't change the state
 
     a_num = 0
     b_num = 0
     for action in take_list:
         if action == Take.BOTH:
-            write_chunk_match(chunks_a, chunks_b, a_num, b_num, fa, fb, file_a_len, file_b_len, out_stream)
+            write_chunk_match(
+                chunks_a,
+                chunks_b,
+                a_num,
+                b_num,
+                fa,
+                fb,
+                file_a_len,
+                file_b_len,
+                out_stream,
+            )
             a_num += 1
             b_num += 1
         elif action == Take.LEFT:
@@ -281,11 +301,17 @@ def merge_trees(fa, fb, out_stream: OutputState):
         elif action == Take.RIGHT:
             write_chunk(chunks_b, b_num, fb, file_b_len, out_stream, 2)
             b_num += 1
-        else: raise Exception()
+        else:
+            raise Exception()
+
 
 if __name__ == "__main__":
-    file_a = Path("/Users/delusional/axiom/5.12.3/Projects/CM_Reference_Data_Calc_Inputs/Branches/5_12_3/Aggregation/Ref_Reporting_Entity.xml")
-    file_b = Path("/Users/delusional/axiom/5.12.4/Projects/CM_Reference_Data_Calc_Inputs/Branches/5_12_4/Aggregation/Ref_Reporting_Entity.xml")
+    file_a = Path(
+        "/Users/delusional/axiom/5.12.3/Projects/CM_Reference_Data_Calc_Inputs/Branches/5_12_3/Aggregation/Ref_Reporting_Entity.xml"
+    )
+    file_b = Path(
+        "/Users/delusional/axiom/5.12.4/Projects/CM_Reference_Data_Calc_Inputs/Branches/5_12_4/Aggregation/Ref_Reporting_Entity.xml"
+    )
     out = OutputState(sys.stdout.buffer)
     with open(file_a, "rb") as fa, open(file_b, "rb") as fb:
         merge_trees(fa, fb, out)
